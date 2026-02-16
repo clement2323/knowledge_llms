@@ -13,6 +13,7 @@ const CATEGORIES = [
   { id: 'training' as const, label: 'Training', color: '#10b981', icon: '🎓' },
   { id: 'parallelism' as const, label: 'Parallelism', color: '#f59e0b', icon: '🔀' },
   { id: 'observability' as const, label: 'Observability', color: '#06b6d4', icon: '📊' },
+  { id: 'retrieval' as const, label: 'Retrieval/RAG', color: '#14b8a6', icon: '🔍' },
 ] as const;
 
 

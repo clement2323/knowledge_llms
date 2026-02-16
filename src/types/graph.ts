@@ -28,7 +28,8 @@ export type CategoryId =
   | 'memory'
   | 'training'
   | 'parallelism'
-  | 'observability';
+  | 'observability'
+  | 'retrieval';
 
 export interface GraphData {
   nodes: GraphNode[];

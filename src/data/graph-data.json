@@ -5,7 +5,8 @@
     { "id": "memory", "label": "Memory", "color": "#ec4899" },
     { "id": "training", "label": "Training", "color": "#10b981" },
     { "id": "parallelism", "label": "Parallelism", "color": "#f59e0b" },
-    { "id": "observability", "label": "Observability", "color": "#06b6d4" }
+    { "id": "observability", "label": "Observability", "color": "#06b6d4" },
+    { "id": "retrieval", "label": "Retrieval/RAG", "color": "#14b8a6" }
   ],
   "nodes": [
     {
@@ -358,6 +359,156 @@
       "magnitudes": "Without mitigation: NaN after 10-20 layers in FP16",
       "tradeoffs": "Must carefully engineer numerical stability for deep networks and mixed precision.",
       "sourceLines": [115]
+    },
+    {
+      "id": "bm25",
+      "name": "BM25 (Best Matching 25)",
+      "category": "retrieval",
+      "description": "Ranking algorithm used in search engines to determine document relevance to a query.",
+      "technical": "Balances term frequency (TF) with inverse document frequency (IDF) and document length. Penalizes overly long documents and caps benefit of repeated terms. More nuanced than TF-IDF.",
+      "magnitudes": "Used in Elasticsearch, Lucene, Solr. Standard for text search.",
+      "tradeoffs": "Better than TF-IDF for varied document lengths, but still sparse (doesn't capture semantic meaning)",
+      "references": ["Robertson & Zaragoza 2009"]
+    },
+    {
+      "id": "tf_idf",
+      "name": "TF-IDF",
+      "category": "retrieval",
+      "description": "Statistical measure evaluating word importance in a document relative to a corpus.",
+      "technical": "Term Frequency (how often word appears) × Inverse Document Frequency (how rare the word is). Sparse representation: each document is a vector of word frequencies.",
+      "magnitudes": "Classic IR method, still used for baseline comparisons",
+      "tradeoffs": "Fast and interpretable but doesn't capture semantic similarity. 'king' and 'monarch' are unrelated.",
+      "references": ["Salton & Buckley 1988"]
+    },
+    {
+      "id": "dense_retrieval",
+      "name": "Dense Retrieval",
+      "category": "retrieval",
+      "description": "Query and documents encoded as dense vectors (embeddings) for semantic similarity search.",
+      "technical": "Use neural encoders (e.g., BERT, sentence transformers) to map text to continuous vector space. Similarity measured by cosine or dot product.",
+      "magnitudes": "Vector dimensions: 384-1024 typical. Captures semantic meaning.",
+      "tradeoffs": "Better semantic matching than sparse methods, but requires neural encoding (slower) and large vector indices",
+      "references": ["Karpukhin et al. 2020 (DPR)"]
+    },
+    {
+      "id": "sparse_retrieval",
+      "name": "Sparse Retrieval",
+      "category": "retrieval",
+      "description": "Documents represented as high-dimensional sparse vectors based on exact term matching.",
+      "technical": "TF-IDF, BM25 create vectors where most entries are 0 (only terms present are non-zero). Fast exact keyword matching.",
+      "magnitudes": "Vocabulary size = vector dimension (10k-100k+)",
+      "tradeoffs": "Very fast, good for exact matches, but misses semantic similarity. 'car' won't match 'automobile'.",
+      "references": ["Classic IR methods"]
+    },
+    {
+      "id": "hybrid_retrieval",
+      "name": "Hybrid Retrieval",
+      "category": "retrieval",
+      "description": "Combines dense (semantic) and sparse (keyword) retrieval for best of both worlds.",
+      "technical": "Run both BM25 and dense vector search, then merge results (e.g., reciprocal rank fusion). Balances exact matching with semantic understanding.",
+      "magnitudes": "Typical: 70% weight on dense, 30% on sparse (tunable)",
+      "tradeoffs": "Higher accuracy but ~2x compute cost (run both searches). Need to tune fusion weights.",
+      "references": ["Hybrid search in Weaviate, Pinecone"]
+    },
+    {
+      "id": "ann_search",
+      "name": "Approximate Nearest Neighbors (ANN)",
+      "category": "retrieval",
+      "description": "Algorithms to quickly find nearest vectors without exhaustive search.",
+      "technical": "Use indexing structures (HNSW graphs, IVF clusters, product quantization) to prune search space. Trade accuracy for speed.",
+      "magnitudes": "FAISS can search billions of vectors in milliseconds. Typical recall@10: 95%+",
+      "tradeoffs": "Approximate (not exact) but 100-1000x faster than brute force. Index build time can be long.",
+      "references": ["Johnson et al. 2019 (FAISS)"]
+    },
+    {
+      "id": "faiss",
+      "name": "FAISS (Facebook AI Similarity Search)",
+      "category": "retrieval",
+      "description": "Highly optimized library for dense vector similarity search and clustering.",
+      "technical": "Implements multiple ANN algorithms: flat (exact), IVF (clustering), HNSW (graph), PQ (quantization). GPU-accelerated.",
+      "magnitudes": "Billion-scale vector search. Used at Meta, OpenAI, etc.",
+      "tradeoffs": "Very fast and scalable but requires careful index tuning (many knobs to turn)",
+      "references": ["https://github.com/facebookresearch/faiss", "Johnson et al. 2019"]
+    },
+    {
+      "id": "hyde",
+      "name": "HyDE (Hypothetical Document Embeddings)",
+      "category": "retrieval",
+      "description": "Generate hypothetical answer to query, then use its embedding for retrieval instead of query embedding.",
+      "technical": "Query → LLM generates fake answer → Embed fake answer → Search for similar real docs. Bridges query-document gap.",
+      "magnitudes": "Can improve retrieval recall by 10-20% on certain datasets",
+      "tradeoffs": "Requires extra LLM call (latency + cost). Works well when query is short/vague but answer is detailed.",
+      "references": ["Gao et al. 2022", "https://arxiv.org/abs/2212.10496"]
+    },
+    {
+      "id": "metadata_filtering",
+      "name": "Metadata Filtering",
+      "category": "retrieval",
+      "description": "Filter documents by metadata (date, author, category) before semantic search.",
+      "technical": "Pre-filter with SQL-like conditions (e.g., date > 2023, category = 'science') then run vector search on filtered subset.",
+      "magnitudes": "Can reduce search space by 10-100x, improving speed and relevance",
+      "tradeoffs": "Requires metadata extraction and storage. Adds complexity to indexing pipeline.",
+      "references": ["Hybrid search pattern"]
+    },
+    {
+      "id": "chunking_strategy",
+      "name": "Child/Parent Chunking",
+      "category": "retrieval",
+      "description": "Retrieve small chunks for precision, but return larger parent chunks for context.",
+      "technical": "Index small chunks (e.g., sentences) for fine-grained matching. On retrieval, return parent chunk (paragraph/section) for LLM context.",
+      "magnitudes": "Child: 100-200 tokens, Parent: 500-1000 tokens",
+      "tradeoffs": "Better context for LLM but uses more tokens. Need to track chunk hierarchy.",
+      "references": ["RAG best practices"]
+    },
+    {
+      "id": "time_weighted_retrieval",
+      "name": "Time-Weighted Retrieval",
+      "category": "retrieval",
+      "description": "Boost recent documents in search results to prioritize fresh information.",
+      "technical": "Multiply similarity score by time decay function: score × exp(-λ × age). λ controls decay rate.",
+      "magnitudes": "Typical: boost last week by 2x, last month by 1.5x, etc.",
+      "tradeoffs": "Keeps results fresh but may miss older relevant content. Need to tune decay rate.",
+      "references": ["Temporal search patterns"]
+    },
+    {
+      "id": "knowledge_graph_rag",
+      "name": "Knowledge Graph RAG",
+      "category": "retrieval",
+      "description": "Use knowledge graph (entities, relations) to augment or replace vector retrieval.",
+      "technical": "Extract entities from query → Traverse graph to find related entities/facts → Provide as context to LLM. Can combine with vector search.",
+      "magnitudes": "Graph DBs like Neo4j. Typically 1-3 hop traversal.",
+      "tradeoffs": "Structured knowledge + reasoning but requires graph construction and maintenance. Good for factual Q&A.",
+      "references": ["Neo4j + LLMs", "GraphRAG"]
+    },
+    {
+      "id": "adaptive_rag",
+      "name": "Adaptive RAG",
+      "category": "retrieval",
+      "description": "System decides whether to use vector search, web search, or no retrieval based on query type.",
+      "technical": "Router LLM classifies query intent → Route to appropriate retrieval: (1) Vector DB for internal knowledge, (2) Web search for current events, (3) Direct LLM for reasoning.",
+      "magnitudes": "Can improve latency (skip retrieval when not needed) and accuracy",
+      "tradeoffs": "Adds routing overhead and complexity. Router must be accurate.",
+      "references": ["https://github.com/mistralai/cookbook"]
+    },
+    {
+      "id": "kg_agent",
+      "name": "Knowledge Graph Agent",
+      "category": "retrieval",
+      "description": "LLM agent that extracts entities and relations from text to populate knowledge graph.",
+      "technical": "Prompt LLM to extract (entity1, relation, entity2) triples from documents → Store in Neo4j/graph DB. Enables structured retrieval and reasoning.",
+      "magnitudes": "Can process web pages, PDFs, etc. and build graph incrementally",
+      "tradeoffs": "LLM extraction not perfect (hallucinations, missed relations). Requires graph storage and query capabilities.",
+      "references": ["https://github.com/camel-ai/camel", "CAMEL Knowledge Graph Agent"]
+    },
+    {
+      "id": "acl",
+      "name": "Access Control Lists (ACLs)",
+      "category": "retrieval",
+      "description": "Security mechanism defining which users can access specific documents and what operations are allowed.",
+      "technical": "Each document has ACL: list of (user/group, permissions). Retrieval system filters results based on requesting user's permissions (view, edit, manage).",
+      "magnitudes": "Critical for enterprise RAG systems with sensitive data",
+      "tradeoffs": "Adds complexity to indexing and retrieval. Must check permissions on every query. Can impact performance.",
+      "references": ["Enterprise search best practices"]
     }
   ],
   "links": [
@@ -620,6 +771,151 @@
       "source": "toxicity_detection",
       "target": "hallucination_detection",
       "type": "related_to"
+    },
+    {
+      "source": "bm25",
+      "target": "tf_idf",
+      "type": "depends_on"
+    },
+    {
+      "source": "sparse_retrieval",
+      "target": "tf_idf",
+      "type": "depends_on"
+    },
+    {
+      "source": "sparse_retrieval",
+      "target": "bm25",
+      "type": "depends_on"
+    },
+    {
+      "source": "hybrid_retrieval",
+      "target": "dense_retrieval",
+      "type": "depends_on"
+    },
+    {
+      "source": "hybrid_retrieval",
+      "target": "sparse_retrieval",
+      "type": "depends_on"
+    },
+    {
+      "source": "dense_retrieval",
+      "target": "ann_search",
+      "type": "depends_on"
+    },
+    {
+      "source": "dense_retrieval",
+      "target": "multi_head_attention",
+      "type": "related_to"
+    },
+    {
+      "source": "faiss",
+      "target": "ann_search",
+      "type": "depends_on"
+    },
+    {
+      "source": "faiss",
+      "target": "weight_memory",
+      "type": "impacts"
+    },
+    {
+      "source": "ann_search",
+      "target": "latency",
+      "type": "optimizes"
+    },
+    {
+      "source": "hyde",
+      "target": "dense_retrieval",
+      "type": "depends_on"
+    },
+    {
+      "source": "metadata_filtering",
+      "target": "hybrid_retrieval",
+      "type": "related_to"
+    },
+    {
+      "source": "chunking_strategy",
+      "target": "context_window",
+      "type": "impacts"
+    },
+    {
+      "source": "chunking_strategy",
+      "target": "dense_retrieval",
+      "type": "impacts"
+    },
+    {
+      "source": "chunking_strategy",
+      "target": "sparse_retrieval",
+      "type": "impacts"
+    },
+    {
+      "source": "time_weighted_retrieval",
+      "target": "dense_retrieval",
+      "type": "related_to"
+    },
+    {
+      "source": "time_weighted_retrieval",
+      "target": "sparse_retrieval",
+      "type": "related_to"
+    },
+    {
+      "source": "knowledge_graph_rag",
+      "target": "kg_agent",
+      "type": "depends_on"
+    },
+    {
+      "source": "knowledge_graph_rag",
+      "target": "hybrid_retrieval",
+      "type": "related_to"
+    },
+    {
+      "source": "knowledge_graph_rag",
+      "target": "hallucination_detection",
+      "type": "optimizes"
+    },
+    {
+      "source": "adaptive_rag",
+      "target": "dense_retrieval",
+      "type": "depends_on"
+    },
+    {
+      "source": "adaptive_rag",
+      "target": "sparse_retrieval",
+      "type": "depends_on"
+    },
+    {
+      "source": "adaptive_rag",
+      "target": "hybrid_retrieval",
+      "type": "depends_on"
+    },
+    {
+      "source": "adaptive_rag",
+      "target": "latency",
+      "type": "optimizes"
+    },
+    {
+      "source": "acl",
+      "target": "dense_retrieval",
+      "type": "impacts"
+    },
+    {
+      "source": "acl",
+      "target": "sparse_retrieval",
+      "type": "impacts"
+    },
+    {
+      "source": "hybrid_retrieval",
+      "target": "hallucination_detection",
+      "type": "optimizes"
+    },
+    {
+      "source": "dense_retrieval",
+      "target": "latency",
+      "type": "impacts"
+    },
+    {
+      "source": "hybrid_retrieval",
+      "target": "latency",
+      "type": "impacts"
     }
   ]
 }
