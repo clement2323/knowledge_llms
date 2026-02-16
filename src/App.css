@@ -503,15 +503,6 @@
   pointer-events: auto;
 }
 
-/* Mobile: Show 65% of screen to keep graph visible */
-@media (max-width: 767px) {
-  .panel {
-    top: 35vh;
-    border-top-left-radius: 20px;
-    border-top-right-radius: 20px;
-  }
-}
-
 @keyframes slideIn {
   from {
     transform: translateX(100%);
@@ -526,8 +517,6 @@
   .panel {
     width: 480px;
     max-width: 480px;
-    top: 0;
-    border-radius: 0;
   }
 }
 
