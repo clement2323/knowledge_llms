@@ -24,46 +24,48 @@ export const NodePanel = ({
       <div className="panel-overlay" onClick={onClose} />
       <aside className="panel">
         <button className="close-btn" onClick={onClose} aria-label="Close panel">
-          ×
+          ✕
         </button>
 
         <div className="panel-content">
-          <h2 className="node-title">{node.name}</h2>
-          <span
-            className="category-badge"
-            style={{ backgroundColor: categoryColor }}
-          >
-            {categoryLabel}
-          </span>
+          <div className="panel-header">
+            <span
+              className="category-badge"
+              style={{ backgroundColor: categoryColor }}
+            >
+              {categoryLabel}
+            </span>
+            <h2 className="node-title">{node.name}</h2>
+          </div>
 
-          <section className="section">
+          <div className="description-section">
             <p className="description">{node.description}</p>
-          </section>
+          </div>
 
           {node.technical && (
-            <details className="details-section">
-              <summary>Technical Details</summary>
-              <p>{node.technical}</p>
-            </details>
+            <div className="content-section">
+              <h3 className="section-title">Technical Details</h3>
+              <p className="section-text">{node.technical}</p>
+            </div>
           )}
 
           {node.magnitudes && (
-            <details className="details-section">
-              <summary>Orders of Magnitude</summary>
-              <p>{node.magnitudes}</p>
-            </details>
+            <div className="content-section">
+              <h3 className="section-title">Orders of Magnitude</h3>
+              <p className="section-text">{node.magnitudes}</p>
+            </div>
           )}
 
           {node.tradeoffs && (
-            <details className="details-section">
-              <summary>Trade-offs</summary>
-              <p>{node.tradeoffs}</p>
-            </details>
+            <div className="content-section">
+              <h3 className="section-title">Trade-offs</h3>
+              <p className="section-text">{node.tradeoffs}</p>
+            </div>
           )}
 
           {node.references && node.references.length > 0 && (
-            <details className="details-section">
-              <summary>References</summary>
+            <div className="content-section">
+              <h3 className="section-title">References</h3>
               <ul className="references-list">
                 {node.references.map((ref, idx) => (
                   <li key={idx}>
@@ -77,12 +79,12 @@ export const NodePanel = ({
                   </li>
                 ))}
               </ul>
-            </details>
+            </div>
           )}
 
           {relatedNodes.length > 0 && (
-            <section className="related-section">
-              <h3>Related Concepts</h3>
+            <div className="related-section">
+              <h3 className="section-title">Related Concepts</h3>
               <div className="related-grid">
                 {relatedNodes.map(n => (
                   <button
@@ -94,7 +96,7 @@ export const NodePanel = ({
                   </button>
                 ))}
               </div>
-            </section>
+            </div>
           )}
         </div>
       </aside>
