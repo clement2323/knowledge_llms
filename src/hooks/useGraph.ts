@@ -4,7 +4,8 @@ import type { GraphData, GraphNode, SimulationNode, SimulationLink } from '../ty
 
 export const useGraph = (
   data: GraphData,
-  onNodeClick: (node: GraphNode) => void
+  onNodeClick: (node: GraphNode) => void,
+  selectedNodeId?: string | null
 ) => {
   const svgRef = useRef<SVGSVGElement>(null);
 
@@ -42,22 +43,11 @@ export const useGraph = (
       .force('center', d3.forceCenter(width / 2, height / 2))
       .force('collision', d3.forceCollide().radius(35));
 
-    // Link type colors
-    const linkColors: Record<string, string> = {
-      depends_on: '#3b82f6',
-      optimizes: '#10b981',
-      trades_off: '#f59e0b',
-      impacts: '#ec4899',
-      related_to: '#6b7280',
-    };
-
-    // Create arrow markers for directed edges
+    // Create arrow marker for edges (single style)
     svg
       .append('defs')
-      .selectAll('marker')
-      .data(['depends_on', 'optimizes', 'trades_off', 'impacts', 'related_to'])
-      .join('marker')
-      .attr('id', d => `arrow-${d}`)
+      .append('marker')
+      .attr('id', 'arrow')
       .attr('viewBox', '0 -5 10 10')
       .attr('refX', 28)
       .attr('refY', 0)
@@ -66,7 +56,23 @@ export const useGraph = (
       .attr('orient', 'auto')
       .append('path')
       .attr('d', 'M0,-5L10,0L0,5')
-      .attr('fill', d => linkColors[d] || '#6b7280');
+      .attr('fill', '#64748b');
+
+    // Get connected node IDs if a node is selected
+    const connectedNodeIds = new Set<string>();
+    if (selectedNodeId) {
+      links.forEach(link => {
+        const sourceId = typeof link.source === 'string' ? link.source : link.source.id;
+        const targetId = typeof link.target === 'string' ? link.target : link.target.id;
+
+        if (sourceId === selectedNodeId) {
+          connectedNodeIds.add(targetId);
+        }
+        if (targetId === selectedNodeId) {
+          connectedNodeIds.add(sourceId);
+        }
+      });
+    }
 
     // Draw links
     const link = g
@@ -74,11 +80,10 @@ export const useGraph = (
       .selectAll('line')
       .data(links)
       .join('line')
-      .attr('stroke', d => linkColors[d.type] || '#6b7280')
-      .attr('stroke-opacity', 0.6)
-      .attr('stroke-width', d => d.type === 'related_to' ? 1.5 : 2)
-      .attr('stroke-dasharray', d => d.type === 'related_to' ? '5,5' : '0')
-      .attr('marker-end', d => `url(#arrow-${d.type})`);
+      .attr('stroke', '#64748b')
+      .attr('stroke-width', 2)
+      .attr('marker-end', 'url(#arrow)')
+      .attr('class', 'graph-link');
 
     // Draw nodes
     const node = g
@@ -104,7 +109,8 @@ export const useGraph = (
       .attr('fill', d => colorMap.get(d.category) || '#999')
       .attr('stroke', '#1e293b')
       .attr('stroke-width', 2.5)
-      .style('filter', 'drop-shadow(0px 2px 4px rgba(0, 0, 0, 0.3))');
+      .style('filter', 'drop-shadow(0px 2px 4px rgba(0, 0, 0, 0.3))')
+      .attr('class', 'node-circle');
 
     // Add labels
     node
@@ -117,7 +123,33 @@ export const useGraph = (
       .attr('font-weight', '600')
       .attr('fill', '#f1f5f9')
       .attr('pointer-events', 'none')
-      .style('text-shadow', '0px 1px 2px rgba(0, 0, 0, 0.8)');
+      .style('text-shadow', '0px 1px 2px rgba(0, 0, 0, 0.8)')
+      .attr('class', 'node-label');
+
+    // Apply highlighting based on selection
+    if (selectedNodeId) {
+      node.each(function(d) {
+        const isSelected = d.id === selectedNodeId;
+        const isConnected = connectedNodeIds.has(d.id);
+        const shouldHighlight = isSelected || isConnected;
+
+        d3.select(this)
+          .style('opacity', shouldHighlight ? 1 : 0.15);
+      });
+
+      link.each(function(d) {
+        const sourceId = typeof d.source === 'string' ? d.source : d.source.id;
+        const targetId = typeof d.target === 'string' ? d.target : d.target.id;
+        const isConnected = (sourceId === selectedNodeId || targetId === selectedNodeId);
+
+        d3.select(this)
+          .attr('stroke-opacity', isConnected ? 0.8 : 0.1)
+          .attr('stroke-width', isConnected ? 3 : 2);
+      });
+    } else {
+      node.style('opacity', 1);
+      link.attr('stroke-opacity', 0.4).attr('stroke-width', 2);
+    }
 
     // Click handler
     node.on('click', (event, d) => {
@@ -187,7 +219,7 @@ export const useGraph = (
     return () => {
       simulation.stop();
     };
-  }, [data, onNodeClick]);
+  }, [data, onNodeClick, selectedNodeId]);
 
   return svgRef;
 };

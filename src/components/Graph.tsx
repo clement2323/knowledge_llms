@@ -4,10 +4,11 @@ import type { GraphData, GraphNode } from '../types/graph';
 interface Props {
   data: GraphData;
   onNodeClick: (node: GraphNode) => void;
+  selectedNodeId?: string | null;
 }
 
-export const Graph = ({ data, onNodeClick }: Props) => {
-  const svgRef = useGraph(data, onNodeClick);
+export const Graph = ({ data, onNodeClick, selectedNodeId }: Props) => {
+  const svgRef = useGraph(data, onNodeClick, selectedNodeId);
 
   return (
     <div className="graph-container">

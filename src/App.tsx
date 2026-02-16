@@ -1,10 +1,10 @@
 import { useState, useMemo } from 'react';
 import { Graph } from './components/Graph';
 import { NodePanel } from './components/NodePanel';
-import { GraphFilters, LINK_TYPES, CATEGORIES } from './components/GraphFilters';
+import { GraphFilters, CATEGORIES } from './components/GraphFilters';
 import { SearchBar } from './components/SearchBar';
 import graphData from './data/graph-data.json';
-import type { GraphNode, GraphData, GraphLink, CategoryId } from './types/graph';
+import type { GraphNode, GraphData, CategoryId } from './types/graph';
 import './App.css';
 
 // Type assertion for imported JSON
@@ -15,9 +15,6 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategories, setActiveCategories] = useState<Set<CategoryId>>(
     new Set(CATEGORIES.map(c => c.id))
-  );
-  const [activeLinks, setActiveLinks] = useState<Set<GraphLink['type']>>(
-    new Set(LINK_TYPES.map(lt => lt.type))
   );
 
   const handleNodeClick = (node: GraphNode) => {
@@ -48,7 +45,7 @@ function App() {
     ? getCategoryInfo(selectedNode.category)
     : { label: '', color: '' };
 
-  // Filter graph data based on search, categories, and link types
+  // Filter graph data based on search and categories
   const filteredGraphData = useMemo(() => {
     let filteredNodes = typedGraphData.nodes.filter(node =>
       activeCategories.has(node.category)
@@ -69,7 +66,6 @@ function App() {
     const nodeIds = new Set(filteredNodes.map(n => n.id));
 
     const filteredLinks = typedGraphData.links.filter(link =>
-      activeLinks.has(link.type) &&
       nodeIds.has(link.source) &&
       nodeIds.has(link.target)
     );
@@ -79,7 +75,7 @@ function App() {
       nodes: filteredNodes,
       links: filteredLinks,
     };
-  }, [activeCategories, activeLinks, searchQuery]);
+  }, [activeCategories, searchQuery]);
 
   // Get search results for dropdown
   const searchResults = useMemo(() => {
@@ -104,11 +100,13 @@ function App() {
       />
       <GraphFilters
         activeCategories={activeCategories}
-        activeLinks={activeLinks}
         onCategoryChange={setActiveCategories}
-        onLinkChange={setActiveLinks}
       />
-      <Graph data={filteredGraphData} onNodeClick={handleNodeClick} />
+      <Graph
+        data={filteredGraphData}
+        onNodeClick={handleNodeClick}
+        selectedNodeId={selectedNode?.id}
+      />
       <NodePanel
         node={selectedNode}
         onClose={handleClosePanel}
