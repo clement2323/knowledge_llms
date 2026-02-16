@@ -1,0 +1,625 @@
+{
+  "categories": [
+    { "id": "architecture", "label": "Architecture", "color": "#4A90E2" },
+    { "id": "inference", "label": "Inference", "color": "#7B68EE" },
+    { "id": "memory", "label": "Memory", "color": "#E94B3C" },
+    { "id": "training", "label": "Training", "color": "#50C878" },
+    { "id": "parallelism", "label": "Parallelism", "color": "#F39C12" },
+    { "id": "observability", "label": "Observability", "color": "#9B59B6" }
+  ],
+  "nodes": [
+    {
+      "id": "multi_head_attention",
+      "name": "Multi-Head Attention",
+      "category": "architecture",
+      "description": "Parallel attention computations across different representation subspaces. Projects Q, K, V into h heads.",
+      "technical": "Each head projects Q, K, V independently and computes scaled dot-product attention. Original paper uses 8 heads stacked 6 times for depth.",
+      "magnitudes": "Typically h=8 heads, O(n² * d) complexity per head",
+      "tradeoffs": "More heads → richer representations but higher memory/compute cost",
+      "references": ["Vaswani et al. 2017", "https://www.datacamp.com/tutorial/how-transformers-work"],
+      "sourceLines": [3]
+    },
+    {
+      "id": "scaled_dot_product",
+      "name": "Scaled Dot-Product Attention",
+      "category": "architecture",
+      "description": "Core attention mechanism: QK^T scaled by sqrt(d_k) to normalize variance, then softmax.",
+      "technical": "Dividing by sqrt(d_k) keeps variance ~1, preventing softmax saturation. Variance of sum of d_k products is proportional to d_k.",
+      "magnitudes": "sqrt(d_k) scaling factor, O(n²) for sequence length n",
+      "tradeoffs": "Without scaling, softmax becomes too peaked (Dirac-style), reducing gradient flow",
+      "sourceLines": [5, 6, 7]
+    },
+    {
+      "id": "layer_norm",
+      "name": "Layer Normalization",
+      "category": "architecture",
+      "description": "Normalizes each vector to mean=0, variance=1 per sample, not across batch like BatchNorm.",
+      "technical": "nn.LayerNorm(d_model) normalizes each d_model dimension individually. Better for variable-length sequences than BatchNorm.",
+      "magnitudes": "Applied per token vector independently",
+      "tradeoffs": "Stabilizes training (less gradient explosion), faster convergence. Pre-LayerNorm gives identity gradient in residual connections.",
+      "references": ["Ba et al. 2016"],
+      "sourceLines": [10, 11, 12, 13, 14, 15, 16, 17, 18]
+    },
+    {
+      "id": "gelu",
+      "name": "GELU Activation",
+      "category": "architecture",
+      "description": "Gaussian Error Linear Unit: x * Φ(x), smooth non-linearity used in transformers.",
+      "technical": "Smoother than ReLU, incorporates probabilistic interpretation. GELU(x) = x * P(X ≤ x) where X ~ N(0,1).",
+      "tradeoffs": "More expressive than ReLU but slightly more computation",
+      "references": ["Hendrycks & Gimpel 2016"],
+      "sourceLines": [164]
+    },
+    {
+      "id": "residual_connections",
+      "name": "Residual Connections",
+      "category": "architecture",
+      "description": "Skip connections that add input to output of sublayer, enabling gradient flow through deep networks.",
+      "technical": "Pre-LayerNorm architecture gives identity gradient through residual path, critical for training stability.",
+      "magnitudes": "Used in every transformer block (2x per block: attention + FFN)",
+      "tradeoffs": "Enables very deep networks but increases memory (must store activations)",
+      "sourceLines": [18]
+    },
+    {
+      "id": "kv_cache",
+      "name": "KV Caching",
+      "category": "inference",
+      "description": "Stores previously computed Key and Value matrices during autoregressive generation to avoid recomputation.",
+      "technical": "In causal inference, K and V from previous tokens are reused when computing attention for new query. Only compute new K, V for current token.",
+      "magnitudes": "Memory: O(n * d * 2 * num_layers) for sequence length n. Speeds up inference ~2-3x.",
+      "tradeoffs": "Massive latency reduction but increases memory requirements linearly with sequence length",
+      "references": ["https://huggingface.co/blog/not-lain/kv-caching", "https://medium.com/@joaolages/kv-caching-explained-276520203249"],
+      "sourceLines": [51, 52, 53, 54]
+    },
+    {
+      "id": "flash_attention",
+      "name": "Flash Attention",
+      "category": "inference",
+      "description": "Memory-efficient attention that fuses operations and minimizes HBM reads/writes.",
+      "technical": "Loads Q, K, V once, fuses attention operations (QK^T, softmax, multiply by V), writes back. Reduces memory bandwidth bottleneck.",
+      "magnitudes": "~2-4x faster than standard attention, enables 2-4x longer sequences",
+      "tradeoffs": "Hardware-specific optimizations (requires CUDA), more complex implementation",
+      "references": ["Dao et al. 2022", "https://huggingface.co/docs/text-generation-inference/en/conceptual/flash_attention"],
+      "sourceLines": [97, 98, 99]
+    },
+    {
+      "id": "sparse_attention",
+      "name": "Sparse Attention",
+      "category": "inference",
+      "description": "Restricts attention to important token pairs instead of all-to-all, reducing O(n²) complexity.",
+      "technical": "Variants: sliding window (local), global tokens (fixed), random attention. Question: do all tokens really need to attend to all others?",
+      "magnitudes": "Can reduce complexity to O(n * sqrt(n)) or O(n * log(n)) depending on pattern",
+      "tradeoffs": "Lower memory/compute but may miss long-range dependencies. Must carefully design sparsity pattern.",
+      "references": ["BigBird", "https://huggingface.co/blog/big-bird"],
+      "sourceLines": [97, 101, 102, 103, 104, 105, 106]
+    },
+    {
+      "id": "sliding_window_attention",
+      "name": "Sliding Window Attention",
+      "category": "inference",
+      "description": "Restricts attention to a local window (e.g., previous 512 tokens only).",
+      "technical": "Each token attends only to k previous tokens. Linear memory O(n*k) instead of O(n²).",
+      "magnitudes": "Typical window: 512-2048 tokens",
+      "tradeoffs": "Loses true long-range dependencies but drastically reduces memory",
+      "sourceLines": [65]
+    },
+    {
+      "id": "context_window",
+      "name": "Context Window",
+      "category": "inference",
+      "description": "Maximum sequence length the model can process. Limited by O(n²) attention memory.",
+      "technical": "Not just about input size - QK^T attention matrix grows quadratically. Memory constraint, not just architecture.",
+      "magnitudes": "GPT-3: 2048, GPT-4: 8k-32k, Claude: 100k+",
+      "tradeoffs": "Larger context → better understanding but exponentially more memory/compute",
+      "references": ["https://huggingface.co/blog/not-lain/kv-caching"],
+      "sourceLines": [47, 48, 49, 57, 58, 60, 61, 62]
+    },
+    {
+      "id": "batching_strategy",
+      "name": "Batching Strategy",
+      "category": "inference",
+      "description": "Grouping multiple requests together for parallel processing on GPU.",
+      "technical": "Dynamic batching: group requests within time window. Avoid padding large sequences (wastes memory).",
+      "magnitudes": "Typical batch sizes: 8-64 for inference",
+      "tradeoffs": "Small batch → lower latency, lower throughput. Large batch → higher throughput, higher latency.",
+      "sourceLines": [187, 190, 191, 192, 193, 194]
+    },
+    {
+      "id": "attention_complexity",
+      "name": "Attention O(n²) Complexity",
+      "category": "memory",
+      "description": "Attention matrix QK^T has quadratic memory and compute requirements in sequence length.",
+      "technical": "For sequence length n and dimension d: memory O(n²), compute O(n² * d). Fundamental bottleneck for long sequences.",
+      "magnitudes": "For n=2048, d=768: ~3GB just for attention matrices",
+      "tradeoffs": "All-to-all attention is powerful but doesn't scale to very long sequences",
+      "sourceLines": [60, 61]
+    },
+    {
+      "id": "oom",
+      "name": "Out of Memory (OOM)",
+      "category": "memory",
+      "description": "Memory capacity failure - model/activations/KV cache exceed device memory.",
+      "technical": "OOM is distinct from latency bottleneck. Can happen even with small sequences if model is huge. Common failure mode in training and long-context inference.",
+      "magnitudes": "Typical GPU: 16-80GB. Large model + activations can easily exceed this.",
+      "tradeoffs": "Must balance model size, batch size, sequence length, precision",
+      "sourceLines": [110, 111, 112, 113, 114]
+    },
+    {
+      "id": "activation_memory",
+      "name": "Activation Memory",
+      "category": "memory",
+      "description": "Intermediate results from forward pass, must be kept for backpropagation.",
+      "technical": "All layer outputs, attention scores, FFN intermediate states. Dominates memory in training. Can be reduced with gradient checkpointing.",
+      "magnitudes": "Typically 10-20x model size during training",
+      "tradeoffs": "Essential for backprop but massive memory cost. Gradient checkpointing trades compute for memory.",
+      "sourceLines": [117]
+    },
+    {
+      "id": "weight_memory",
+      "name": "Weight Memory",
+      "category": "memory",
+      "description": "Memory for model parameters. Varies by precision (FP32, FP16, INT8).",
+      "technical": "FP32: 4 bytes/param. FP16: 2 bytes/param. INT8: 1 byte/param. Inference weights ≠ training weights (training needs optimizer states).",
+      "magnitudes": "7B model in FP32: 28GB. In FP16: 14GB. In INT8: 7GB.",
+      "tradeoffs": "Lower precision → less memory but potential accuracy loss",
+      "sourceLines": [71, 72, 73]
+    },
+    {
+      "id": "gradient_memory",
+      "name": "Gradient Memory",
+      "category": "memory",
+      "description": "Storage for gradients during backpropagation. Same size as model weights.",
+      "technical": "Each parameter needs gradient storage. Plus optimizer states (momentum, variance for Adam) = 2x more memory.",
+      "magnitudes": "Total training memory: weights + gradients + optimizer states + activations",
+      "tradeoffs": "Can use gradient accumulation to reduce memory at cost of slower updates",
+      "sourceLines": [74]
+    },
+    {
+      "id": "mixed_precision",
+      "name": "Mixed Precision Training",
+      "category": "training",
+      "description": "Use FP16 for compute, FP32 for weight updates. Reduces memory and speeds up training.",
+      "technical": "Forward/backward in FP16. Master weights in FP32. Loss scaling prevents gradient underflow. Some layers (BatchNorm) stay FP32.",
+      "magnitudes": "~2x memory reduction, 2-3x speedup on modern GPUs",
+      "tradeoffs": "Must handle underflow with loss scaling. Small added complexity.",
+      "references": ["Micikevicius et al. 2017"],
+      "sourceLines": [21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41]
+    },
+    {
+      "id": "loss_scaling",
+      "name": "Loss Scaling",
+      "category": "training",
+      "description": "Multiply loss by large constant to prevent gradient underflow in FP16.",
+      "technical": "Scale loss by 1024 or similar. Compute gradients in FP16. Unscale before weight update. Preserves tiny gradients that would become 0 in FP16.",
+      "magnitudes": "Typical scale factor: 128-1024",
+      "tradeoffs": "Simple technique, essential for FP16 training. Must tune scale factor.",
+      "sourceLines": [27, 28, 29, 30, 31]
+    },
+    {
+      "id": "quantization",
+      "name": "Quantization",
+      "category": "training",
+      "description": "Convert high-precision (FP32/FP16) to lower precision (INT8/INT4) to reduce memory and compute.",
+      "technical": "PTQ (Post-Training Quantization): quantize after training. QAT (Quantization-Aware Training): simulate quantization during training for better accuracy.",
+      "magnitudes": "INT8: 4x smaller than FP32. INT4: 8x smaller.",
+      "tradeoffs": "PTQ is easy but may lose accuracy. QAT is expensive but maintains quality.",
+      "references": ["Jacob et al. 2017"],
+      "sourceLines": [43, 44, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87]
+    },
+    {
+      "id": "rlhf",
+      "name": "RLHF (Reinforcement Learning from Human Feedback)",
+      "category": "training",
+      "description": "Train a reward model from human preferences, then optimize LLM policy using RL.",
+      "technical": "1) Collect human rankings of outputs. 2) Train reward model to predict human preferences (Elo-style). 3) Use PPO/similar to optimize LLM. Works for subjective tasks (humor, helpfulness).",
+      "magnitudes": "Typical: 1000 prompts, 5 rollouts each → 5000 samples for reward model",
+      "tradeoffs": "Humans find ranking easier than generation. Enables optimization on unverifiable domains. But: expensive, risk of reward hacking.",
+      "references": ["Christiano et al. 2017", "Ouyang et al. 2022 (InstructGPT)"],
+      "sourceLines": [170, 171, 172, 173, 174, 175, 176, 177]
+    },
+    {
+      "id": "post_training",
+      "name": "Post-Training / Fine-Tuning",
+      "category": "training",
+      "description": "Train base model on conversational/instruction data to create a chatbot/assistant.",
+      "technical": "Fine-tune pretrained model on dataset of instructions and responses. Includes supervised fine-tuning (SFT) and RLHF.",
+      "magnitudes": "Typically 10k-100k instruction examples",
+      "tradeoffs": "Relatively cheap vs pretraining. Aligns model to desired behavior.",
+      "sourceLines": [166]
+    },
+    {
+      "id": "tensor_parallelism",
+      "name": "Tensor Parallelism (TP)",
+      "category": "parallelism",
+      "description": "Split individual layers (matrix multiplications) across GPUs. Each GPU computes a slice of weights.",
+      "technical": "Each GPU stores fraction of parameters. Activations need all-reduce for synchronization. High inter-GPU communication per layer.",
+      "magnitudes": "Typical: 2-8 GPUs per TP group",
+      "tradeoffs": "Needed when single layer doesn't fit on one GPU. Adds communication latency but reduces per-GPU memory.",
+      "sourceLines": [124, 125, 126, 127, 128, 129]
+    },
+    {
+      "id": "pipeline_parallelism",
+      "name": "Pipeline Parallelism (PP)",
+      "category": "parallelism",
+      "description": "Split model layers into sequential stages across GPUs. Mini-batches flow through pipeline.",
+      "technical": "Each GPU holds subset of layers. Micro-batching reduces pipeline bubbles. Higher latency at pipeline start but good throughput.",
+      "magnitudes": "Typical: 4-16 pipeline stages",
+      "tradeoffs": "Enables extremely deep models. Pipeline bubbles waste compute but micro-batching helps.",
+      "sourceLines": [131, 132, 133, 134, 135]
+    },
+    {
+      "id": "data_parallelism",
+      "name": "Data Parallelism (DP)",
+      "category": "parallelism",
+      "description": "Replicate full model on each GPU. Each processes different data. Average gradients across devices.",
+      "technical": "Full model per GPU (unless using ZeRO sharding). Scales throughput linearly with batch size. Communication during gradient reduction.",
+      "magnitudes": "Can scale to 100s-1000s of GPUs",
+      "tradeoffs": "Simple, scales throughput well. But: full model per GPU (memory intensive). Often combined with TP/PP.",
+      "sourceLines": [137, 138, 139, 140, 141]
+    },
+    {
+      "id": "communication_overhead",
+      "name": "Communication Overhead",
+      "category": "parallelism",
+      "description": "Time and bandwidth cost of moving tensors between devices instead of computing.",
+      "technical": "Transfer gradients, activations, parameters between GPUs. Can dominate FLOPs at scale. Grows with model depth and parallelism degree.",
+      "magnitudes": "Can be 30-50% of total time in large distributed training",
+      "tradeoffs": "Fundamental bottleneck in scaling. Improved by better interconnects (NVLink, InfiniBand).",
+      "sourceLines": [91, 92, 93, 94]
+    },
+    {
+      "id": "flops",
+      "name": "FLOPs",
+      "category": "observability",
+      "description": "Floating Point Operations - measure of computational work.",
+      "technical": "FLOPs for transformer forward: ~6 * num_params * batch * seqlen. Backward: ~2x forward.",
+      "magnitudes": "GPT-3 training: ~3.14e23 FLOPs",
+      "tradeoffs": "FLOPs don't account for memory bandwidth, communication overhead. Can be misleading metric.",
+      "sourceLines": [89]
+    },
+    {
+      "id": "latency",
+      "name": "Latency",
+      "category": "observability",
+      "description": "Response time for single request or token generation.",
+      "technical": "Measured per request or per token. P99 latency: 99% of requests faster than this value. More important than mean for user experience.",
+      "magnitudes": "Good token latency: 10-50ms. P99 should be <2x P50.",
+      "tradeoffs": "Lower latency → better UX but may reduce throughput. Batching increases latency.",
+      "sourceLines": [150, 179, 180, 181, 182, 183, 184, 185]
+    },
+    {
+      "id": "throughput",
+      "name": "Throughput",
+      "category": "observability",
+      "description": "Number of tokens processed per second across all requests.",
+      "technical": "Tokens/sec or requests/sec. Higher throughput = better GPU utilization. Increased by batching.",
+      "magnitudes": "Modern serving: 1000-10000 tokens/sec per GPU",
+      "tradeoffs": "Large batches → high throughput but high latency. Fundamental tradeoff.",
+      "sourceLines": [119, 120, 187]
+    },
+    {
+      "id": "memorization",
+      "name": "Memorization Detection",
+      "category": "observability",
+      "description": "Detecting when model outputs training data verbatim. Privacy and copyright concern.",
+      "technical": "Exposure metric: fraction of n-grams from training corpus. Membership inference attacks. High-confidence extraction (temp=0, beam search).",
+      "magnitudes": "Models can memorize 1-2% of training examples",
+      "tradeoffs": "Larger models memorize more. Tradeoff between capability and privacy.",
+      "references": ["Carlini et al. 2021"],
+      "sourceLines": [196, 197, 198, 199, 200, 201]
+    },
+    {
+      "id": "perplexity",
+      "name": "Perplexity",
+      "category": "observability",
+      "description": "Exponentiated cross-entropy loss. Lower = better language model.",
+      "technical": "PPL = exp(mean negative log-likelihood). Measures how 'surprised' model is by test data.",
+      "magnitudes": "Good LM: PPL < 20. Poor: PPL > 100.",
+      "tradeoffs": "Easy to compute but doesn't capture generation quality, safety, factuality.",
+      "sourceLines": [168]
+    },
+    {
+      "id": "bleu_rouge",
+      "name": "BLEU / ROUGE",
+      "category": "observability",
+      "description": "N-gram overlap metrics for translation and summarization quality.",
+      "technical": "BLEU: precision-focused (translation). ROUGE: recall-focused (summarization). Both use n-gram matching with reference text.",
+      "magnitudes": "BLEU scores: 0-100, good translation >40. ROUGE: 0-1 scale.",
+      "tradeoffs": "Easy to compute but poor correlation with human judgment for generation tasks. Better for MT than open-ended generation.",
+      "sourceLines": [168]
+    },
+    {
+      "id": "hallucination_detection",
+      "name": "Hallucination Detection",
+      "category": "observability",
+      "description": "Identifying when model generates false or unsupported information.",
+      "technical": "Semantic consistency checks (cross-compare with retrieval sources). Fact-checking models for entities/numbers. Confidence calibration.",
+      "magnitudes": "State-of-art detectors: 70-85% accuracy",
+      "tradeoffs": "Hard to automate reliably. Often needs human verification. Active research area.",
+      "sourceLines": [153, 154, 155]
+    },
+    {
+      "id": "toxicity_detection",
+      "name": "Toxicity Detection",
+      "category": "observability",
+      "description": "Detecting offensive, biased, or harmful model outputs.",
+      "technical": "Use classifiers (Perspective API, in-house models). Monitor distribution shifts. User feedback loops.",
+      "magnitudes": "Perspective API: 0-1 toxicity score",
+      "tradeoffs": "Classifiers can be biased themselves. Must balance safety and false positives.",
+      "references": ["Perspective API"],
+      "sourceLines": [156]
+    },
+    {
+      "id": "numerical_instability",
+      "name": "Numerical Instability",
+      "category": "memory",
+      "description": "Gradient saturation, NaN values, especially in FP16. Mitigated by layer norm, loss scaling.",
+      "technical": "Multiple layers + FP16 can cause gradient underflow/overflow. LayerNorm stabilizes activations. Loss scaling preserves small gradients.",
+      "magnitudes": "Without mitigation: NaN after 10-20 layers in FP16",
+      "tradeoffs": "Must carefully engineer numerical stability for deep networks and mixed precision.",
+      "sourceLines": [115]
+    }
+  ],
+  "links": [
+    {
+      "source": "multi_head_attention",
+      "target": "scaled_dot_product",
+      "type": "depends_on"
+    },
+    {
+      "source": "multi_head_attention",
+      "target": "attention_complexity",
+      "type": "impacts"
+    },
+    {
+      "source": "multi_head_attention",
+      "target": "layer_norm",
+      "type": "related_to"
+    },
+    {
+      "source": "scaled_dot_product",
+      "target": "attention_complexity",
+      "type": "impacts"
+    },
+    {
+      "source": "scaled_dot_product",
+      "target": "numerical_instability",
+      "type": "impacts"
+    },
+    {
+      "source": "layer_norm",
+      "target": "residual_connections",
+      "type": "optimizes"
+    },
+    {
+      "source": "layer_norm",
+      "target": "numerical_instability",
+      "type": "optimizes"
+    },
+    {
+      "source": "layer_norm",
+      "target": "mixed_precision",
+      "type": "related_to"
+    },
+    {
+      "source": "residual_connections",
+      "target": "activation_memory",
+      "type": "impacts"
+    },
+    {
+      "source": "kv_cache",
+      "target": "context_window",
+      "type": "optimizes"
+    },
+    {
+      "source": "kv_cache",
+      "target": "weight_memory",
+      "type": "trades_off"
+    },
+    {
+      "source": "kv_cache",
+      "target": "latency",
+      "type": "optimizes"
+    },
+    {
+      "source": "flash_attention",
+      "target": "attention_complexity",
+      "type": "optimizes"
+    },
+    {
+      "source": "flash_attention",
+      "target": "weight_memory",
+      "type": "optimizes"
+    },
+    {
+      "source": "flash_attention",
+      "target": "latency",
+      "type": "optimizes"
+    },
+    {
+      "source": "sparse_attention",
+      "target": "attention_complexity",
+      "type": "optimizes"
+    },
+    {
+      "source": "sparse_attention",
+      "target": "context_window",
+      "type": "optimizes"
+    },
+    {
+      "source": "sliding_window_attention",
+      "target": "sparse_attention",
+      "type": "related_to"
+    },
+    {
+      "source": "sliding_window_attention",
+      "target": "attention_complexity",
+      "type": "optimizes"
+    },
+    {
+      "source": "context_window",
+      "target": "attention_complexity",
+      "type": "impacts"
+    },
+    {
+      "source": "context_window",
+      "target": "oom",
+      "type": "impacts"
+    },
+    {
+      "source": "batching_strategy",
+      "target": "throughput",
+      "type": "optimizes"
+    },
+    {
+      "source": "batching_strategy",
+      "target": "latency",
+      "type": "trades_off"
+    },
+    {
+      "source": "batching_strategy",
+      "target": "weight_memory",
+      "type": "impacts"
+    },
+    {
+      "source": "attention_complexity",
+      "target": "oom",
+      "type": "impacts"
+    },
+    {
+      "source": "attention_complexity",
+      "target": "latency",
+      "type": "impacts"
+    },
+    {
+      "source": "activation_memory",
+      "target": "oom",
+      "type": "impacts"
+    },
+    {
+      "source": "weight_memory",
+      "target": "oom",
+      "type": "impacts"
+    },
+    {
+      "source": "gradient_memory",
+      "target": "oom",
+      "type": "impacts"
+    },
+    {
+      "source": "mixed_precision",
+      "target": "loss_scaling",
+      "type": "depends_on"
+    },
+    {
+      "source": "mixed_precision",
+      "target": "weight_memory",
+      "type": "optimizes"
+    },
+    {
+      "source": "mixed_precision",
+      "target": "numerical_instability",
+      "type": "trades_off"
+    },
+    {
+      "source": "loss_scaling",
+      "target": "numerical_instability",
+      "type": "optimizes"
+    },
+    {
+      "source": "quantization",
+      "target": "weight_memory",
+      "type": "optimizes"
+    },
+    {
+      "source": "quantization",
+      "target": "latency",
+      "type": "optimizes"
+    },
+    {
+      "source": "rlhf",
+      "target": "post_training",
+      "type": "related_to"
+    },
+    {
+      "source": "post_training",
+      "target": "gradient_memory",
+      "type": "impacts"
+    },
+    {
+      "source": "tensor_parallelism",
+      "target": "weight_memory",
+      "type": "optimizes"
+    },
+    {
+      "source": "tensor_parallelism",
+      "target": "communication_overhead",
+      "type": "impacts"
+    },
+    {
+      "source": "tensor_parallelism",
+      "target": "latency",
+      "type": "trades_off"
+    },
+    {
+      "source": "pipeline_parallelism",
+      "target": "weight_memory",
+      "type": "optimizes"
+    },
+    {
+      "source": "pipeline_parallelism",
+      "target": "throughput",
+      "type": "optimizes"
+    },
+    {
+      "source": "pipeline_parallelism",
+      "target": "latency",
+      "type": "trades_off"
+    },
+    {
+      "source": "data_parallelism",
+      "target": "throughput",
+      "type": "optimizes"
+    },
+    {
+      "source": "data_parallelism",
+      "target": "communication_overhead",
+      "type": "impacts"
+    },
+    {
+      "source": "data_parallelism",
+      "target": "gradient_memory",
+      "type": "impacts"
+    },
+    {
+      "source": "communication_overhead",
+      "target": "flops",
+      "type": "trades_off"
+    },
+    {
+      "source": "communication_overhead",
+      "target": "throughput",
+      "type": "impacts"
+    },
+    {
+      "source": "latency",
+      "target": "throughput",
+      "type": "trades_off"
+    },
+    {
+      "source": "memorization",
+      "target": "perplexity",
+      "type": "related_to"
+    },
+    {
+      "source": "hallucination_detection",
+      "target": "bleu_rouge",
+      "type": "related_to"
+    },
+    {
+      "source": "toxicity_detection",
+      "target": "hallucination_detection",
+      "type": "related_to"
+    }
+  ]
+}
