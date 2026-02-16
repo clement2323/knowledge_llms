@@ -474,27 +474,18 @@
   color: #6366f1;
 }
 
-/* Panel Overlay */
+/* Panel Overlay - Transparent, allows clicks through */
 .panel-overlay {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(4px);
+  background: transparent;
   z-index: 998;
-  animation: fadeIn 0.2s ease-out;
+  pointer-events: none;
 }
 
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
 
 /* Side Panel - Mobile First */
 .panel {
@@ -505,10 +496,11 @@
   width: 100%;
   max-width: 100vw;
   background: linear-gradient(to bottom, #ffffff, #f8fafc);
-  box-shadow: -8px 0 32px rgba(0, 0, 0, 0.2);
+  box-shadow: -8px 0 32px rgba(0, 0, 0, 0.3);
   z-index: 999;
   overflow-y: auto;
   animation: slideIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: auto;
 }
 
 /* Mobile: Show 65% of screen to keep graph visible */
