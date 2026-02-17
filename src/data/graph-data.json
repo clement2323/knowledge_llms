@@ -383,10 +383,10 @@
       "id": "dense_retrieval",
       "name": "Dense Retrieval",
       "category": "retrieval",
-      "description": "Query and documents encoded as dense vectors (embeddings) for semantic similarity search.",
-      "technical": "Use neural encoders (e.g., BERT, sentence transformers) to map text to continuous vector space. Similarity measured by cosine or dot product.",
-      "magnitudes": "Vector dimensions: 384-1024 typical. Captures semantic meaning.",
-      "tradeoffs": "Better semantic matching than sparse methods, but requires neural encoding (slower) and large vector indices",
+      "description": "Query and documents encoded as dense vectors (embeddings) for semantic similarity search. The embedding model needs high inference speed since it must encode large corpora.",
+      "technical": "Use neural encoders (e.g., BERT, sentence transformers) to map text to continuous vector space. Similarity measured by cosine or dot product. Embedding model can be fine-tuned for domain knowledge: embed a question, match against document embeddings by similarity, update encoder parameters based on relevance feedback. Some RAG systems use two different models for query and document encoding — aligning these two semantic spaces is then necessary. Dynamic embeddings can also adjust with context.",
+      "magnitudes": "Vector dimensions: 384-1024 typical. Need to embed entire corpus at indexing time. Query encoding: ~5-20ms.",
+      "tradeoffs": "Better semantic matching than sparse methods, but requires neural encoding (slower) and large vector indices. Fine-tuning embeddings for a domain improves recall but adds training cost. Analogy: fine-tuning the embedding model is like adjusting the ear to the language.",
       "references": ["Karpukhin et al. 2020 (DPR)"]
     },
     {
@@ -433,10 +433,10 @@
       "id": "hyde",
       "name": "HyDE (Hypothetical Document Embeddings)",
       "category": "retrieval",
-      "description": "Generate hypothetical answer to query, then use its embedding for retrieval instead of query embedding.",
-      "technical": "Query → LLM generates fake answer → Embed fake answer → Search for similar real docs. Bridges query-document gap.",
-      "magnitudes": "Can improve retrieval recall by 10-20% on certain datasets",
-      "tradeoffs": "Requires extra LLM call (latency + cost). Works well when query is short/vague but answer is detailed.",
+      "description": "Generate a hypothetical document answering the query, then embed that document and retrieve real documents similar to it. A very intelligent way of bridging the query-document semantic gap.",
+      "technical": "Query → LLM generates a fake/hypothetical answer → Embed the fake answer → Search for similar real docs using the hypothetical embedding. Key insight: the hypothetical answer lives in 'document space' (similar language, structure, vocabulary) rather than 'query space', so cosine similarity with real documents is much higher. The LLM doesn't need to be correct — just plausible enough to produce a useful embedding.",
+      "magnitudes": "Can improve retrieval recall by 10-20% on certain datasets. Adds one LLM call (~100-500ms).",
+      "tradeoffs": "Requires extra LLM call (latency + cost). Works very well when query is short/vague but the expected answer would be detailed. Major caveat: does NOT work well if the LLM is unfamiliar with the topic — the hypothetical document will be too far from reality to produce useful embeddings.",
       "references": ["Gao et al. 2022", "https://arxiv.org/abs/2212.10496"]
     },
     {
@@ -451,12 +451,12 @@
     },
     {
       "id": "chunking_strategy",
-      "name": "Child/Parent Chunking",
+      "name": "Chunking Strategy",
       "category": "retrieval",
-      "description": "Retrieve small chunks for precision, but return larger parent chunks for context.",
-      "technical": "Index small chunks (e.g., sentences) for fine-grained matching. On retrieval, return parent chunk (paragraph/section) for LLM context.",
-      "magnitudes": "Child: 100-200 tokens, Parent: 500-1000 tokens",
-      "tradeoffs": "Better context for LLM but uses more tokens. Need to track chunk hierarchy.",
+      "description": "How to divide documents into chunks for indexing. Chunk size is a KEY parameter in RAG — it directly affects retrieval precision, recall, and LLM generation quality.",
+      "technical": "Small-to-large paradigm (Child/Parent): index small chunks (sentences) for fine-grained matching, but return the larger parent chunk (paragraph/section) for LLM context. Chunk size affects everything: too small → fragments lack context for meaningful embeddings, too large → embeddings are diluted and irrelevant content is included. Pre-retrieval data processing: clean text, remove irrelevant info/special characters, handle multi-format sources (PDF, HTML, etc.), erase redundancy.",
+      "magnitudes": "Child: 100-200 tokens, Parent: 500-1000 tokens. Chunk size is the single most impactful tuning parameter in a RAG pipeline.",
+      "tradeoffs": "Smaller chunks → better precision (each chunk is focused) but worse recall (context is lost). Larger chunks → better context but more noise. Must track chunk hierarchy for child/parent retrieval. Optimizing chunk overlap also matters (0-20% typical).",
       "references": ["RAG best practices"]
     },
     {
@@ -558,6 +558,46 @@
       "magnitudes": "F1 > 0.9 excellent, 0.7-0.9 good, < 0.5 poor for most tasks. In information retrieval, recall@k is common (recall within top-k results).",
       "tradeoffs": "Precision vs recall is a fundamental trade-off: stricter threshold → higher precision, lower recall, and vice versa. F1 treats both equally; use F-beta score for weighted importance. All require labeled ground truth, which is expensive for generative tasks — this limitation motivates perplexity and human evaluation.",
       "references": ["van Rijsbergen 1979"]
+    },
+    {
+      "id": "rag_pipeline",
+      "name": "RAG Pipeline (Retrieval-Augmented Generation)",
+      "category": "retrieval",
+      "description": "Augments LLM generation with external non-parametric knowledge (vector DB, documents) to overcome LLM limitations: lack of domain knowledge, outdated information, high cost of fine-tuning, and hallucinations. Parametric knowledge = LLM weights. Non-parametric knowledge = external retrieval.",
+      "technical": "Three paradigms of increasing sophistication: (1) Naive RAG ('Retrieve-Read'): Index data (clean/extract/chunk/embed) → Retrieve top-K documents by similarity → Generate answer from query + retrieved context. (2) Advanced RAG: adds pre-retrieval (enhance data granularity, optimize index structures, add metadata, alignment optimization, mixed retrieval) and post-retrieval methods (reranking, prompt compression). (3) Modular RAG: pluggable modules (search, memory, generation, task-adaptable, alignment) with end-to-end training across modules. Advantages over pure LLM: transparency (citing sources), more deterministic (retrieval is deterministic unlike generation), scalable (add data without retraining), customizable (same model + different DBs), role-based access control possible, can refuse to answer when no relevant docs found.",
+      "magnitudes": "Naive RAG: simplest, works for basic Q&A. Advanced RAG: production-grade. Modular RAG: research frontier. RAG vs fine-tuning: RAG needs no retraining but adds retrieval latency; fine-tuning is faster at generation but expensive to update.",
+      "tradeoffs": "RAG vs fine-tuning is NOT exclusive — combining both often gives the best results. RAG drawbacks: retrieval can have low precision (irrelevant chunks) or low recall (missed relevant chunks), outdated indices, hallucinations still possible even with context, difficulty integrating information from multiple retrieved documents, LLM may not synthesize properly. Context window limits how much retrieved content can be used.",
+      "references": ["Gao et al. 2023 (RAG Survey)", "https://hf.co/papers/2312.10997", "Lewis et al. 2020"]
+    },
+    {
+      "id": "reranking",
+      "name": "Reranking",
+      "category": "retrieval",
+      "description": "Post-retrieval step that reorders retrieved documents to place the most relevant ones first, reducing noise before feeding context to the LLM.",
+      "technical": "After initial retrieval (top-K), a reranker model re-scores each document against the query with a more powerful (but slower) cross-encoder model. Strategies: (1) Relevance reranker — cross-encoder scores query-document pairs jointly (more accurate than bi-encoder similarity). (2) Diversity ranker — prioritizes diverse documents to avoid redundancy. (3) LostInTheMiddle ranker — places most relevant docs at start and end of context (LLMs attend less to middle content). (4) Prompt compression — erase noise in retrieved documents, condense information. PRCA: train an information extractor to produce a compressed output close to the concatenation of retrieved docs but shorter.",
+      "magnitudes": "Reranking typically processes 10-100 candidates. Cross-encoder reranking: ~50-200ms. Can improve answer quality by 10-30% over raw retrieval.",
+      "tradeoffs": "More accurate ranking but adds latency (cross-encoders are slower than bi-encoders). Reduces the number of documents to a fixed quantity — must balance between enough context and too much noise. The LostInTheMiddle effect is a real LLM limitation that reranking can mitigate.",
+      "references": ["Nogueira & Cho 2019", "Liu et al. 2023 (Lost in the Middle)"]
+    },
+    {
+      "id": "rag_evaluation",
+      "name": "RAG Evaluation",
+      "category": "observability",
+      "description": "Evaluating RAG systems along 3 key dimensions: faithfulness, answer relevance, and context relevance. Lack of clear unified metrics remains a challenge.",
+      "technical": "3 core metrics: (1) Faithfulness — is the answer consistent with the retrieved context? (not hallucinating beyond sources). (2) Answer relevance — is the generated answer directly related to the question? (3) Context relevance — are the retrieved documents closely related to the query? Two evaluation approaches: Independent (assess retrieval and generation modules separately) vs End-to-end (assess only final answer vs query). Can be unlabeled (relevance, harmful content) or labeled (precision scores). Manual evaluation vs automated LLM-as-a-judge. RAGAS algorithm: faithfulness = decompose answer into statements, check consistency with context, score = relevant_statements/total. Answer relevance = generate potential questions from answer, compute average embedding distance to original query. Context relevance = extract relevant sentences from context, score = relevant/total. ARES: (1) generate synthetic Q&A from corpus, (2) fine-tune lightweight LLM as judge on synthetic data, (3) rank RAG systems with confidence intervals.",
+      "magnitudes": "RAGAS and ARES are the main frameworks. LLM-as-judge correlation with human judgment: ~0.7-0.85.",
+      "tradeoffs": "Automated evaluation is scalable but imperfect. LLM-as-judge can be biased. Human evaluation is gold standard but expensive and slow. Key LLM abilities for RAG: noise robustness (handle noisy docs), negative rejection (refuse when no relevant docs found), information integration (synthesize from multiple docs), counterfactual robustness (detect erroneous information in retrieved docs).",
+      "references": ["Es et al. 2023 (RAGAS)", "https://hf.co/papers/2309.15217", "Saad-Falcon et al. 2023 (ARES)"]
+    },
+    {
+      "id": "query_rewriting",
+      "name": "Query Rewriting & Alignment",
+      "category": "retrieval",
+      "description": "Pre-retrieval techniques to transform the user query into a form better suited for retrieval. Bridges the gap between how users ask questions and how documents are written.",
+      "technical": "Multiple strategies: (1) Query rewriting — rephrase the query to match document vocabulary (e.g., using an LLM to expand or reformulate). (2) Alignment optimization — generate hypothetical questions that each document could answer, embed these alongside the document (query-to-query similarity is often better than query-to-document). (3) Embedding transformation — plug an adapter after the query embedding to map it to a better-suited latent space, optimizing the mapping between user query space and document space. (4) Step-back prompting — abstract the query to a higher level before retrieval. Some systems use two different encoders for queries and documents — alignment then requires training to make these semantic spaces compatible.",
+      "magnitudes": "Query rewriting can improve retrieval recall by 5-15%. Adapter-based transformation: minimal latency overhead (~1-5ms).",
+      "tradeoffs": "Each technique adds complexity and potentially latency. Query rewriting with LLM adds ~100-500ms. Adapter training requires labeled data. Alignment optimization at indexing time increases index size but doesn't affect query latency.",
+      "references": ["Ma et al. 2023 (Query Rewriting)", "https://hf.co/papers/2404.10981"]
     }
   ],
   "links": [
@@ -1136,6 +1176,120 @@
       "target": "gradient_memory",
       "type": "impacts",
       "description": "PPO requires storing gradients for both the actor (LLM policy) and the critic (value function), plus their optimizer states. This nearly doubles the memory footprint compared to supervised fine-tuning."
+    },
+    {
+      "source": "rag_pipeline",
+      "target": "dense_retrieval",
+      "type": "depends_on",
+      "description": "RAG pipelines rely on dense retrieval to find semantically relevant documents. The embedding model encodes both the query and indexed chunks into vector space for similarity matching."
+    },
+    {
+      "source": "rag_pipeline",
+      "target": "sparse_retrieval",
+      "type": "depends_on",
+      "description": "RAG pipelines can also use sparse retrieval (BM25) for keyword-based matching, especially in Naive RAG or as part of hybrid search in Advanced RAG."
+    },
+    {
+      "source": "rag_pipeline",
+      "target": "context_window",
+      "type": "impacts",
+      "description": "Retrieved documents consume context window tokens. Too short a context → not enough relevant information can be included. Too long → information gets lost in the middle. Chunk size must be calibrated to available context."
+    },
+    {
+      "source": "rag_pipeline",
+      "target": "hallucination_detection",
+      "type": "related_to",
+      "description": "RAG reduces hallucinations by grounding generation in retrieved sources (more deterministic), but doesn't eliminate them — the LLM can still hallucinate beyond the provided context or fail to synthesize properly."
+    },
+    {
+      "source": "rag_pipeline",
+      "target": "post_training",
+      "type": "trades_off",
+      "description": "RAG vs fine-tuning: RAG adds knowledge without retraining (scalable, updatable) but adds retrieval latency. Fine-tuning bakes knowledge into weights (faster generation) but is expensive to update. Combining both often gives the best results."
+    },
+    {
+      "source": "rag_pipeline",
+      "target": "chunking_strategy",
+      "type": "depends_on",
+      "description": "The indexing step of any RAG pipeline requires choosing how to chunk documents. Chunk size is the single most impactful parameter — it determines the granularity of retrieval and quality of embeddings."
+    },
+    {
+      "source": "rag_pipeline",
+      "target": "acl",
+      "type": "related_to",
+      "description": "Enterprise RAG systems can leverage ACLs to control which users see which documents. This enables role-based access: same model, different knowledge bases per user role. The model can also refuse to answer when no permitted documents are relevant."
+    },
+    {
+      "source": "reranking",
+      "target": "rag_pipeline",
+      "type": "optimizes",
+      "description": "Reranking is a post-retrieval step in Advanced RAG: after initial retrieval returns top-K candidates, the reranker re-scores them with a more powerful model to place the most relevant documents first."
+    },
+    {
+      "source": "reranking",
+      "target": "dense_retrieval",
+      "type": "optimizes",
+      "description": "Reranking compensates for the limited accuracy of bi-encoder retrieval. The cross-encoder reranker jointly encodes query+document (more accurate but slower) to improve the ordering from dense retrieval."
+    },
+    {
+      "source": "reranking",
+      "target": "latency",
+      "type": "impacts",
+      "description": "Cross-encoder reranking adds 50-200ms per query on top of retrieval latency. This is the price of more accurate document ordering — must balance quality gain vs latency budget."
+    },
+    {
+      "source": "reranking",
+      "target": "precision_recall_f1",
+      "type": "optimizes",
+      "description": "Reranking directly improves retrieval precision by pushing irrelevant documents down the ranking. It can improve precision@k by 10-30% compared to raw retrieval scores."
+    },
+    {
+      "source": "rag_evaluation",
+      "target": "rag_pipeline",
+      "type": "related_to",
+      "description": "RAG evaluation assesses the full pipeline along 3 axes: faithfulness (answer consistent with context?), answer relevance (answer matches query?), context relevance (retrieved docs match query?). Can evaluate modules independently or end-to-end."
+    },
+    {
+      "source": "rag_evaluation",
+      "target": "precision_recall_f1",
+      "type": "related_to",
+      "description": "RAG evaluation uses precision/recall concepts: context precision (fraction of retrieved docs that are relevant), context recall (fraction of relevant docs that are retrieved), answer faithfulness (fraction of claims supported by context)."
+    },
+    {
+      "source": "rag_evaluation",
+      "target": "hallucination_detection",
+      "type": "related_to",
+      "description": "Faithfulness evaluation in RAG is essentially hallucination detection scoped to the retrieved context. RAGAS decomposes answers into statements and checks each against the provided sources."
+    },
+    {
+      "source": "rag_evaluation",
+      "target": "perplexity",
+      "type": "related_to",
+      "description": "Perplexity measures language model quality but cannot assess RAG-specific dimensions like faithfulness or context relevance. RAG evaluation requires dedicated metrics that consider the retrieval-generation interaction."
+    },
+    {
+      "source": "query_rewriting",
+      "target": "rag_pipeline",
+      "type": "optimizes",
+      "description": "Query rewriting is a pre-retrieval optimization in Advanced RAG. By reformulating the user query to better match document vocabulary, it improves retrieval recall before any search happens."
+    },
+    {
+      "source": "query_rewriting",
+      "target": "dense_retrieval",
+      "type": "optimizes",
+      "description": "Query rewriting and embedding transformation map user queries into the document semantic space. An adapter layer after query encoding can optimize this mapping with minimal latency overhead (~1-5ms)."
+    },
+    {
+      "source": "query_rewriting",
+      "target": "hyde",
+      "type": "related_to",
+      "description": "HyDE is a specific form of query rewriting: instead of reformulating the query, generate a hypothetical answer and use its embedding. Both techniques aim to bridge the query-document semantic gap."
+    },
+    {
+      "source": "query_rewriting",
+      "target": "latency",
+      "type": "impacts",
+      "description": "LLM-based query rewriting adds ~100-500ms per query. Adapter-based embedding transformation is much cheaper (~1-5ms). Must budget this within the overall RAG latency target."
     }
   ]
 }
