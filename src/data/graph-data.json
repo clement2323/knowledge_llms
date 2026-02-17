@@ -211,12 +211,11 @@
       "id": "rlhf",
       "name": "RLHF (Reinforcement Learning from Human Feedback)",
       "category": "training",
-      "description": "Train a reward model from human preferences, then optimize LLM policy using RL.",
-      "technical": "1) Collect human rankings of outputs. 2) Train reward model to predict human preferences (Elo-style). 3) Use PPO/similar to optimize LLM. Works for subjective tasks (humor, helpfulness).",
-      "magnitudes": "Typical: 1000 prompts, 5 rollouts each → 5000 samples for reward model",
-      "tradeoffs": "Humans find ranking easier than generation. Enables optimization on unverifiable domains. But: expensive, risk of reward hacking.",
-      "references": ["Christiano et al. 2017", "Ouyang et al. 2022 (InstructGPT)"],
-      "sourceLines": [170, 171, 172, 173, 174, 175, 176, 177]
+      "description": "Motivated by a fundamental challenge: it is intractable to build a loss function that captures what 'good text' means to humans. BLEU/ROUGE are limited proxies. RLHF's key idea: use human feedback directly as the optimization signal — human feedback as a loss.",
+      "technical": "3-step process: (a) Pretrain a language model on a large corpus — this gives a base model capable of generating text. (b) Train a Reward Model (RM): collect human rankings of model outputs for given prompts. RM takes (prompt x, response y) and outputs a scalar score r(x,y) reflecting human preferences. Uses Bradley-Terry / Elo-style logic: given preferred y+ and dispreferred y-, we want r(x,y+) - r(x,y-) > 0. Apply sigmoid: σ(r+ - r-) = P(y+ > y-), and penalize when this probability is too low → this IS the loss. (c) Fine-tune with RL (PPO): duplicate the pretrained model. State = current sequence/prompt, Action = next-token probability distribution, Reward = RM score. Critical detail: final reward includes a KL divergence penalty: r = r_θ - λ·r_KL. This KL term compares per-token distributions between the RL policy and the frozen reference model. Without it, the model generates gibberish that hacks the reward model. The reference model is NEVER updated — at start KL=0, then it grows as the policy diverges, acting as a regularizer.",
+      "magnitudes": "Typical: 10k-50k prompts, 5 rollouts each for reward model training. PPO: 1-3 epochs over generated data.",
+      "tradeoffs": "Key insight: humans find ranking far easier than generation. Enables optimization on unverifiable domains (helpfulness, humor, safety). Risks: reward hacking (model exploits RM weaknesses), expensive human annotation, KL penalty tuning is delicate (too low → gibberish, too high → no learning). After initial RLHF, can iteratively improve the RM by ranking RL outputs vs initial model outputs.",
+      "references": ["Christiano et al. 2017", "Ouyang et al. 2022 (InstructGPT)", "https://huggingface.co/blog/rlhf"]
     },
     {
       "id": "post_training",
@@ -313,20 +312,20 @@
       "id": "perplexity",
       "name": "Perplexity",
       "category": "observability",
-      "description": "Exponentiated cross-entropy loss. Lower = better language model.",
-      "technical": "PPL = exp(mean negative log-likelihood). Measures how 'surprised' model is by test data.",
-      "magnitudes": "Good LM: PPL < 20. Poor: PPL > 100.",
-      "tradeoffs": "Easy to compute but doesn't capture generation quality, safety, factuality.",
+      "description": "Exponentiated cross-entropy loss. Lower = better language model. Closely related to likelihood (inverted): measures how 'surprised' or 'perplexed' the model is by test data.",
+      "technical": "PPL = exp(mean negative log-likelihood). Intuitive interpretation: a perplexity of K means the model is, on average, as confused as if it had to choose equally among K candidate words at each position. PPL=10 means the model narrows each prediction to ~10 equiprobable choices. PPL=1 would mean perfect prediction. Computed on held-out data to measure generalization, not memorization.",
+      "magnitudes": "Good LM: PPL < 20. Poor: PPL > 100. GPT-3 on WikiText: ~20.",
+      "tradeoffs": "Easy to compute and compare across models, but doesn't capture generation quality, safety, factuality, or human preferences. A model with low perplexity can still hallucinate or generate toxic content — this limitation motivates RLHF.",
       "sourceLines": [168]
     },
     {
       "id": "bleu_rouge",
       "name": "BLEU / ROUGE",
       "category": "observability",
-      "description": "N-gram overlap metrics for translation and summarization quality.",
-      "technical": "BLEU: precision-focused (translation). ROUGE: recall-focused (summarization). Both use n-gram matching with reference text.",
+      "description": "N-gram overlap metrics for translation and summarization quality. Historically the standard automatic evaluation, but fundamentally limited for open-ended generation.",
+      "technical": "BLEU: precision-focused (translation) — what fraction of generated n-grams appear in the reference? ROUGE: recall-focused (summarization) — what fraction of reference n-grams appear in the generated text? Both rely on exact token matching against reference text.",
       "magnitudes": "BLEU scores: 0-100, good translation >40. ROUGE: 0-1 scale.",
-      "tradeoffs": "Easy to compute but poor correlation with human judgment for generation tasks. Better for MT than open-ended generation.",
+      "tradeoffs": "Easy to compute but poor correlation with human judgment for open-ended generation. Cannot capture style, helpfulness, safety, or factual accuracy. This fundamental limitation — the difficulty of defining 'good text' with automatic metrics — is precisely what motivates RLHF: use human preferences directly as the loss signal instead.",
       "sourceLines": [168]
     },
     {
@@ -509,6 +508,56 @@
       "magnitudes": "Critical for enterprise RAG systems with sensitive data",
       "tradeoffs": "Adds complexity to indexing and retrieval. Must check permissions on every query. Can impact performance.",
       "references": ["Enterprise search best practices"]
+    },
+    {
+      "id": "reward_model",
+      "name": "Reward Model",
+      "category": "training",
+      "description": "A model trained to score text quality based on human preferences. Takes a (prompt, response) pair and outputs a scalar 'preferability' score. The key intermediate step that converts human rankings into a differentiable signal.",
+      "technical": "Trained on human comparison data: given prompt x, preferred output y+ and dispreferred y-, learn r(x,y) such that r(x,y+) > r(x,y-). Uses Bradley-Terry model (Elo-style logic): loss = -log(σ(r(x,y+) - r(x,y-))). The sigmoid of score difference gives the preference probability P(y+ > y-). If this probability is too low, the loss penalizes the model — this IS the loss function. The RM can be another LLM fine-tuned for scoring, or a model trained from scratch on preference data.",
+      "magnitudes": "Typically trained on 10k-100k human comparisons. Model size: often 1-10B params. Smaller than the policy model.",
+      "tradeoffs": "Only as good as human annotations (noisy, subjective, expensive). Can be gamed/hacked by the RL policy — the model may find outputs that score high but are low quality (reward overoptimization). Can iteratively improve by ranking RL outputs vs initial model outputs.",
+      "references": ["Ouyang et al. 2022 (InstructGPT)", "https://huggingface.co/blog/rlhf"]
+    },
+    {
+      "id": "ppo",
+      "name": "PPO (Proximal Policy Optimization)",
+      "category": "training",
+      "description": "Actor-critic RL algorithm with bounded policy updates, used as the standard optimizer in RLHF fine-tuning. A mature, well-tested method from the RL community.",
+      "technical": "In RLHF context: Actor = the LLM (policy network producing token probabilities), Critic = value function estimating expected reward. PPO's key idea: clip the objective to bound how much token probabilities can change per update step (the 'proximal' constraint). This prevents catastrophic forgetting — the model can't change too drastically in one step. State = current sequence/prompt, Action = probability distribution over vocabulary, Next state = generated sequence, Reward = reward model score minus KL penalty. Some parameters may be frozen (see LoRA).",
+      "magnitudes": "Typical clip ratio epsilon = 0.1-0.2. Learning rate: 1e-6 to 5e-5. Mini-batch training over generated rollouts.",
+      "tradeoffs": "More stable than vanilla policy gradient (REINFORCE) but more complex to implement. Alternatives emerging: DPO (Direct Preference Optimization) eliminates the reward model entirely by reformulating as a classification loss on preference pairs. GRPO (Group Relative Policy Optimization) is another recent alternative.",
+      "references": ["Schulman et al. 2017", "Rafailov et al. 2023 (DPO)", "https://huggingface.co/blog/rlhf"]
+    },
+    {
+      "id": "lora",
+      "name": "LoRA (Low-Rank Adaptation)",
+      "category": "training",
+      "description": "Freezes all pretrained weights and injects small trainable low-rank decomposition matrices into each transformer layer. Enables efficient fine-tuning with drastically fewer parameters.",
+      "technical": "Instead of updating full weight matrix W (d x d), decompose the update as Delta_W = B * A where B is (d x r) and A is (r x d), with r << d (typical rank 4-64). Only A and B are trained — the original W stays frozen. Key insight: weight updates during fine-tuning have low intrinsic rank, meaning you don't need to modify all dimensions. Critical advantage: zero additional inference latency — after training, merge Delta_W back into W (W' = W + B*A) and serve as a normal model. Multiple LoRA adapters can be hot-swapped on the same base model for different tasks.",
+      "magnitudes": "Reduces trainable parameters by ~10,000x vs full fine-tuning. GPU memory reduced ~3x. GPT-3 175B: from 175B trainable params to ~17M with LoRA. Typical rank r = 8-64.",
+      "tradeoffs": "Near-identical quality to full fine-tuning at a fraction of the cost. Multiple adapters can share one base model (huge memory savings in serving). Limitation: better at adapting existing capabilities than learning entirely new ones. Deploying independent full fine-tunes at 175B scale is prohibitively expensive — LoRA makes multi-task fine-tuning practical.",
+      "references": ["Hu et al. 2021", "https://arxiv.org/abs/2106.09685"]
+    },
+    {
+      "id": "chain_of_thought",
+      "name": "Chain-of-Thought Prompting",
+      "category": "inference",
+      "description": "Prompting technique that enhances reasoning by making the model produce intermediate logical steps before the final answer. Unlocks latent reasoning capabilities already present in the model.",
+      "technical": "Prompt structure encourages step-by-step reasoning: 'First...', 'Then...', 'From that I can deduce...', 'Finally...'. Different from basic prompt chaining, which simply sequences responses without requiring logical deduction. Two variants: (1) Few-shot CoT — provide examples with reasoning chains in the prompt, (2) Zero-shot CoT — simply append 'Let's think step by step' (surprisingly effective). Works best with large models (>100B params); smaller models may produce incoherent chains.",
+      "magnitudes": "Can improve accuracy by 10-40% on math, logic, and multi-step reasoning tasks. GSM8K (grade school math): GPT-3 jumps from ~18% to ~57% with CoT. Increases output length 2-5x.",
+      "tradeoffs": "More tokens generated = higher latency and cost. Doesn't help on simple factual recall. Can produce convincing but wrong reasoning chains (faithfulness problem — the chain may not reflect the model's actual computation). Not a substitute for actual reasoning capabilities.",
+      "references": ["Wei et al. 2022", "Kojima et al. 2022 (Zero-shot CoT)", "https://hf.co/papers/2201.11903"]
+    },
+    {
+      "id": "precision_recall_f1",
+      "name": "Precision / Recall / F1",
+      "category": "observability",
+      "description": "Fundamental classification and retrieval metrics. Precision measures accuracy of positive predictions, recall measures coverage of actual positives, F1 balances both.",
+      "technical": "Precision = TP / (TP + FP): among those labeled positive by the model, what proportion are truly positive? (controls Type I error / false alarms). Recall = TP / (TP + FN): among the actual positives, what percentage is detected? (controls Type II error / missed detections). F1 = 2 * P * R / (P + R): harmonic mean of precision and recall — penalizes imbalance more than arithmetic mean. In RAG evaluation: precision = relevant documents retrieved / total retrieved, recall = relevant retrieved / total relevant in corpus.",
+      "magnitudes": "F1 > 0.9 excellent, 0.7-0.9 good, < 0.5 poor for most tasks. In information retrieval, recall@k is common (recall within top-k results).",
+      "tradeoffs": "Precision vs recall is a fundamental trade-off: stricter threshold → higher precision, lower recall, and vice versa. F1 treats both equally; use F-beta score for weighted importance. All require labeled ground truth, which is expensive for generative tasks — this limitation motivates perplexity and human evaluation.",
+      "references": ["van Rijsbergen 1979"]
     }
   ],
   "links": [
@@ -997,6 +1046,96 @@
       "target": "latency",
       "type": "impacts",
       "description": "Hybrid retrieval roughly doubles search latency vs single-method retrieval since it runs both dense and sparse searches, plus fusion scoring. Parallel execution helps but doesn't eliminate the cost."
+    },
+    {
+      "source": "rlhf",
+      "target": "reward_model",
+      "type": "depends_on",
+      "description": "RLHF's step (b): train a reward model on human preference data. The RM converts subjective human rankings into a differentiable scalar score that can be used as the RL reward signal."
+    },
+    {
+      "source": "rlhf",
+      "target": "ppo",
+      "type": "depends_on",
+      "description": "RLHF's step (c): use PPO to fine-tune the LLM policy against the reward model's scores. PPO's clipped objective prevents the model from changing too drastically per step."
+    },
+    {
+      "source": "rlhf",
+      "target": "bleu_rouge",
+      "type": "related_to",
+      "description": "RLHF is motivated by the limitations of automatic metrics like BLEU/ROUGE. Since no n-gram metric can capture what 'good text' means to humans, RLHF uses human feedback directly as the optimization signal."
+    },
+    {
+      "source": "ppo",
+      "target": "reward_model",
+      "type": "depends_on",
+      "description": "PPO needs the reward model to provide per-episode rewards. The actor (LLM) generates text, the reward model scores it, and PPO updates the policy to maximize expected reward minus KL penalty."
+    },
+    {
+      "source": "reward_model",
+      "target": "post_training",
+      "type": "related_to",
+      "description": "The reward model is trained during the post-training pipeline, between supervised fine-tuning (SFT) and the RL optimization step. It bridges human judgment and the optimization process."
+    },
+    {
+      "source": "lora",
+      "target": "post_training",
+      "type": "related_to",
+      "description": "LoRA is one of the most popular fine-tuning methods. Instead of updating all 175B parameters of a model like GPT-3, LoRA trains only ~17M low-rank adapter weights — making fine-tuning practical."
+    },
+    {
+      "source": "lora",
+      "target": "weight_memory",
+      "type": "optimizes",
+      "description": "LoRA reduces the trainable parameter count by ~10,000x. Since frozen weights don't need optimizer states (momentum, variance), the actual GPU memory footprint drops by ~3x compared to full fine-tuning."
+    },
+    {
+      "source": "lora",
+      "target": "gradient_memory",
+      "type": "optimizes",
+      "description": "Only the low-rank matrices A and B require gradients and optimizer states. The bulk of model weights are frozen, eliminating their gradient memory overhead entirely."
+    },
+    {
+      "source": "lora",
+      "target": "rlhf",
+      "type": "related_to",
+      "description": "LoRA is frequently used during the RLHF fine-tuning step (PPO phase) to reduce memory requirements. Only the low-rank adapters are updated by the policy gradient, keeping the base model frozen."
+    },
+    {
+      "source": "chain_of_thought",
+      "target": "latency",
+      "type": "impacts",
+      "description": "CoT prompting generates 2-5x more tokens (the reasoning chain) before the final answer. Each additional token adds autoregressive decoding latency and increases cost proportionally."
+    },
+    {
+      "source": "chain_of_thought",
+      "target": "context_window",
+      "type": "impacts",
+      "description": "The intermediate reasoning steps consume context window tokens. For complex multi-step problems, the chain can use hundreds of tokens, leaving less room for the actual input or retrieval context."
+    },
+    {
+      "source": "precision_recall_f1",
+      "target": "bleu_rouge",
+      "type": "related_to",
+      "description": "BLEU is essentially a precision metric (n-grams in output that match reference), ROUGE is essentially a recall metric (reference n-grams found in output). They are domain-specific applications of the precision/recall framework."
+    },
+    {
+      "source": "precision_recall_f1",
+      "target": "hallucination_detection",
+      "type": "related_to",
+      "description": "Hallucination detectors are evaluated using precision (what fraction of flagged content is actually hallucinated?) and recall (what fraction of hallucinations are caught?). High recall is critical — missed hallucinations are dangerous."
+    },
+    {
+      "source": "precision_recall_f1",
+      "target": "perplexity",
+      "type": "related_to",
+      "description": "Both are model evaluation metrics but measure different things. Precision/recall evaluate discrete predictions against ground truth. Perplexity evaluates the probability distribution over the full vocabulary — complementary perspectives."
+    },
+    {
+      "source": "ppo",
+      "target": "gradient_memory",
+      "type": "impacts",
+      "description": "PPO requires storing gradients for both the actor (LLM policy) and the critic (value function), plus their optimizer states. This nearly doubles the memory footprint compared to supervised fine-tuning."
     }
   ]
 }
