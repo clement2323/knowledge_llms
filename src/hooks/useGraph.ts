@@ -5,7 +5,9 @@ import type { GraphData, GraphNode, SimulationNode, SimulationLink } from '../ty
 export const useGraph = (
   data: GraphData,
   onNodeClick: (node: GraphNode) => void,
-  selectedNodeId?: string | null
+  selectedNodeId?: string | null,
+  onEdgeClick?: (link: SimulationLink) => void,
+  selectedEdge?: { sourceId: string; targetId: string } | null
 ) => {
   const svgRef = useRef<SVGSVGElement>(null);
 
@@ -58,23 +60,31 @@ export const useGraph = (
       .attr('d', 'M0,-5L10,0L0,5')
       .attr('fill', '#64748b');
 
+    // Helper to get IDs from links (source/target can be string or object)
+    const getLinkSourceId = (d: SimulationLink) =>
+      typeof d.source === 'string' ? d.source : d.source.id;
+    const getLinkTargetId = (d: SimulationLink) =>
+      typeof d.target === 'string' ? d.target : d.target.id;
+
     // Get connected node IDs if a node is selected
     const connectedNodeIds = new Set<string>();
     if (selectedNodeId) {
       links.forEach(link => {
-        const sourceId = typeof link.source === 'string' ? link.source : link.source.id;
-        const targetId = typeof link.target === 'string' ? link.target : link.target.id;
-
-        if (sourceId === selectedNodeId) {
-          connectedNodeIds.add(targetId);
-        }
-        if (targetId === selectedNodeId) {
-          connectedNodeIds.add(sourceId);
-        }
+        const sourceId = getLinkSourceId(link);
+        const targetId = getLinkTargetId(link);
+        if (sourceId === selectedNodeId) connectedNodeIds.add(targetId);
+        if (targetId === selectedNodeId) connectedNodeIds.add(sourceId);
       });
     }
 
-    // Draw links
+    // Get edge endpoint IDs if an edge is selected
+    const edgeEndpointIds = new Set<string>();
+    if (selectedEdge) {
+      edgeEndpointIds.add(selectedEdge.sourceId);
+      edgeEndpointIds.add(selectedEdge.targetId);
+    }
+
+    // Draw visible links
     const link = g
       .append('g')
       .selectAll('line')
@@ -84,6 +94,57 @@ export const useGraph = (
       .attr('stroke-width', 2)
       .attr('marker-end', 'url(#arrow)')
       .attr('class', 'graph-link');
+
+    // Draw invisible wider hit-area lines for click/hover
+    const hitArea = g
+      .append('g')
+      .selectAll('line')
+      .data(links)
+      .join('line')
+      .attr('stroke', 'transparent')
+      .attr('stroke-width', 20)
+      .style('cursor', 'pointer');
+
+    // Edge click handler
+    hitArea.on('click', (event, d) => {
+      event.stopPropagation();
+      onEdgeClick?.(d);
+    });
+
+    // Edge hover effects
+    hitArea
+      .on('mouseenter', function (_event, d) {
+        const idx = links.indexOf(d);
+        link.filter((_l, i) => i === idx)
+          .attr('stroke', '#a5b4fc')
+          .attr('stroke-width', 3.5)
+          .attr('stroke-opacity', 1);
+      })
+      .on('mouseleave', function (_event, d) {
+        const idx = links.indexOf(d);
+        const el = link.filter((_l, i) => i === idx);
+        // Restore based on selection state
+        if (selectedEdge) {
+          const sId = getLinkSourceId(d);
+          const tId = getLinkTargetId(d);
+          const isSelected =
+            sId === selectedEdge.sourceId && tId === selectedEdge.targetId;
+          el.attr('stroke', isSelected ? '#a5b4fc' : '#64748b')
+            .attr('stroke-width', isSelected ? 3.5 : 2)
+            .attr('stroke-opacity', isSelected ? 1 : 0.1);
+        } else if (selectedNodeId) {
+          const sId = getLinkSourceId(d);
+          const tId = getLinkTargetId(d);
+          const isConnected = sId === selectedNodeId || tId === selectedNodeId;
+          el.attr('stroke', '#64748b')
+            .attr('stroke-width', isConnected ? 3 : 2)
+            .attr('stroke-opacity', isConnected ? 0.8 : 0.1);
+        } else {
+          el.attr('stroke', '#64748b')
+            .attr('stroke-width', 2)
+            .attr('stroke-opacity', 0.4);
+        }
+      });
 
     // Draw nodes
     const node = g
@@ -127,21 +188,36 @@ export const useGraph = (
       .attr('class', 'node-label');
 
     // Apply highlighting based on selection
-    if (selectedNodeId) {
-      node.each(function(d) {
+    if (selectedEdge) {
+      // Edge selected: highlight endpoints, fade rest
+      node.each(function (d) {
+        const isEndpoint = edgeEndpointIds.has(d.id);
+        d3.select(this).style('opacity', isEndpoint ? 1 : 0.15);
+      });
+
+      link.each(function (d) {
+        const sId = getLinkSourceId(d);
+        const tId = getLinkTargetId(d);
+        const isSelected =
+          sId === selectedEdge.sourceId && tId === selectedEdge.targetId;
+        d3.select(this)
+          .attr('stroke', isSelected ? '#a5b4fc' : '#64748b')
+          .attr('stroke-opacity', isSelected ? 1 : 0.1)
+          .attr('stroke-width', isSelected ? 3.5 : 2);
+      });
+    } else if (selectedNodeId) {
+      node.each(function (d) {
         const isSelected = d.id === selectedNodeId;
         const isConnected = connectedNodeIds.has(d.id);
         const shouldHighlight = isSelected || isConnected;
-
-        d3.select(this)
-          .style('opacity', shouldHighlight ? 1 : 0.15);
+        d3.select(this).style('opacity', shouldHighlight ? 1 : 0.15);
       });
 
-      link.each(function(d) {
-        const sourceId = typeof d.source === 'string' ? d.source : d.source.id;
-        const targetId = typeof d.target === 'string' ? d.target : d.target.id;
-        const isConnected = (sourceId === selectedNodeId || targetId === selectedNodeId);
-
+      link.each(function (d) {
+        const sourceId = getLinkSourceId(d);
+        const targetId = getLinkTargetId(d);
+        const isConnected =
+          sourceId === selectedNodeId || targetId === selectedNodeId;
         d3.select(this)
           .attr('stroke-opacity', isConnected ? 0.8 : 0.1)
           .attr('stroke-width', isConnected ? 3 : 2);
@@ -184,6 +260,12 @@ export const useGraph = (
         .attr('x2', d => (d.target as SimulationNode).x || 0)
         .attr('y2', d => (d.target as SimulationNode).y || 0);
 
+      hitArea
+        .attr('x1', d => (d.source as SimulationNode).x || 0)
+        .attr('y1', d => (d.source as SimulationNode).y || 0)
+        .attr('x2', d => (d.target as SimulationNode).x || 0)
+        .attr('y2', d => (d.target as SimulationNode).y || 0);
+
       node.attr('transform', d => `translate(${d.x || 0},${d.y || 0})`);
     });
 
@@ -219,7 +301,7 @@ export const useGraph = (
     return () => {
       simulation.stop();
     };
-  }, [data, onNodeClick, selectedNodeId]);
+  }, [data, onNodeClick, selectedNodeId, onEdgeClick, selectedEdge]);
 
   return svgRef;
 };

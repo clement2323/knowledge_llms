@@ -1,10 +1,11 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { Graph } from './components/Graph';
 import { NodePanel } from './components/NodePanel';
+import { EdgePanel } from './components/EdgePanel';
 import { GraphFilters, CATEGORIES } from './components/GraphFilters';
 import { SearchBar } from './components/SearchBar';
 import graphData from './data/graph-data.json';
-import type { GraphNode, GraphData, CategoryId } from './types/graph';
+import type { GraphNode, GraphData, CategoryId, SimulationLink, SimulationNode, ResolvedEdge } from './types/graph';
 import './App.css';
 
 // Type assertion for imported JSON
@@ -12,17 +13,39 @@ const typedGraphData = graphData as GraphData;
 
 function App() {
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
+  const [selectedEdge, setSelectedEdge] = useState<ResolvedEdge | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategories, setActiveCategories] = useState<Set<CategoryId>>(
     new Set(CATEGORIES.map(c => c.id))
   );
 
-  const handleNodeClick = (node: GraphNode) => {
+  const handleNodeClick = useCallback((node: GraphNode) => {
     setSelectedNode(node);
-  };
+    setSelectedEdge(null);
+  }, []);
+
+  const handleEdgeClick = useCallback((link: SimulationLink) => {
+    const sourceNode = typeof link.source === 'string'
+      ? typedGraphData.nodes.find(n => n.id === link.source)
+      : typedGraphData.nodes.find(n => n.id === (link.source as SimulationNode).id);
+    const targetNode = typeof link.target === 'string'
+      ? typedGraphData.nodes.find(n => n.id === link.target)
+      : typedGraphData.nodes.find(n => n.id === (link.target as SimulationNode).id);
+
+    if (sourceNode && targetNode) {
+      setSelectedEdge({
+        sourceNode,
+        targetNode,
+        type: link.type,
+        description: link.description,
+      });
+      setSelectedNode(null);
+    }
+  }, []);
 
   const handleClosePanel = () => {
     setSelectedNode(null);
+    setSelectedEdge(null);
   };
 
   const getRelatedNodes = (nodeId: string): GraphNode[] => {
@@ -44,6 +67,15 @@ function App() {
   const categoryInfo = selectedNode
     ? getCategoryInfo(selectedNode.category)
     : { label: '', color: '' };
+
+  // Derive selectedEdge info for Graph component
+  const selectedEdgeIds = useMemo(() => {
+    if (!selectedEdge) return null;
+    return {
+      sourceId: selectedEdge.sourceNode.id,
+      targetId: selectedEdge.targetNode.id,
+    };
+  }, [selectedEdge]);
 
   // Filter graph data based on search and categories
   const filteredGraphData = useMemo(() => {
@@ -106,6 +138,8 @@ function App() {
         data={filteredGraphData}
         onNodeClick={handleNodeClick}
         selectedNodeId={selectedNode?.id}
+        onEdgeClick={handleEdgeClick}
+        selectedEdge={selectedEdgeIds}
       />
       <NodePanel
         node={selectedNode}
@@ -114,6 +148,11 @@ function App() {
         onNodeClick={handleNodeClick}
         categoryLabel={categoryInfo.label}
         categoryColor={categoryInfo.color}
+      />
+      <EdgePanel
+        edge={selectedEdge}
+        onClose={handleClosePanel}
+        onNodeClick={handleNodeClick}
       />
     </div>
   );

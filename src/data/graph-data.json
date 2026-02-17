@@ -515,407 +515,488 @@
     {
       "source": "multi_head_attention",
       "target": "scaled_dot_product",
-      "type": "depends_on"
+      "type": "depends_on",
+      "description": "Each attention head internally computes scaled dot-product attention (QK^T/sqrt(d_k) then softmax). Multi-head is just h parallel instances of this core operation."
     },
     {
       "source": "multi_head_attention",
       "target": "attention_complexity",
-      "type": "impacts"
+      "type": "impacts",
+      "description": "Running h heads multiplies the attention computation. Total cost is O(h * n^2 * d/h) = O(n^2 * d), so the quadratic bottleneck in sequence length remains."
     },
     {
       "source": "multi_head_attention",
       "target": "layer_norm",
-      "type": "related_to"
+      "type": "related_to",
+      "description": "In transformer blocks, layer normalization is applied right before or after multi-head attention (pre-norm vs post-norm). They are architectural neighbors in every block."
     },
     {
       "source": "scaled_dot_product",
       "target": "attention_complexity",
-      "type": "impacts"
+      "type": "impacts",
+      "description": "The QK^T matrix multiplication produces an n*n attention matrix, which is the direct source of the O(n^2) memory and compute cost."
     },
     {
       "source": "scaled_dot_product",
       "target": "numerical_instability",
-      "type": "impacts"
+      "type": "impacts",
+      "description": "Without the sqrt(d_k) scaling, dot products grow with dimension, pushing softmax into saturation where gradients vanish. The scaling prevents this but doesn't eliminate all FP16 issues."
     },
     {
       "source": "layer_norm",
       "target": "residual_connections",
-      "type": "optimizes"
+      "type": "optimizes",
+      "description": "Pre-LayerNorm placed before the sublayer ensures the residual path carries an identity gradient, stabilizing training for very deep networks."
     },
     {
       "source": "layer_norm",
       "target": "numerical_instability",
-      "type": "optimizes"
+      "type": "optimizes",
+      "description": "By normalizing activations to zero mean and unit variance at every layer, LayerNorm prevents activation magnitudes from exploding or vanishing across depth."
     },
     {
       "source": "layer_norm",
       "target": "mixed_precision",
-      "type": "related_to"
+      "type": "related_to",
+      "description": "LayerNorm is often kept in FP32 even during mixed-precision training because normalization statistics are sensitive to precision loss."
     },
     {
       "source": "residual_connections",
       "target": "activation_memory",
-      "type": "impacts"
+      "type": "impacts",
+      "description": "Skip connections require storing input activations at each block for the addition during forward pass, and for backpropagation, increasing total activation memory."
     },
     {
       "source": "kv_cache",
       "target": "context_window",
-      "type": "optimizes"
+      "type": "optimizes",
+      "description": "By caching previously computed K and V tensors, KV cache makes autoregressive generation over long contexts feasible — each new token only computes one new K,V pair instead of recomputing all."
     },
     {
       "source": "kv_cache",
       "target": "weight_memory",
-      "type": "trades_off"
+      "type": "trades_off",
+      "description": "KV cache trades compute savings for memory: storing K,V for all layers and all past tokens grows linearly with sequence length and can rival model weight memory for long contexts."
     },
     {
       "source": "kv_cache",
       "target": "latency",
-      "type": "optimizes"
+      "type": "optimizes",
+      "description": "Without KV cache, each new token would require recomputing attention over the full sequence. Caching reduces per-token latency from O(n*d) to O(d) for the K,V computation."
     },
     {
       "source": "flash_attention",
       "target": "attention_complexity",
-      "type": "optimizes"
+      "type": "optimizes",
+      "description": "Flash Attention doesn't reduce asymptotic FLOPs but dramatically reduces memory reads/writes by fusing QK^T, softmax, and V multiplication in a single GPU kernel pass using tiling."
     },
     {
       "source": "flash_attention",
       "target": "weight_memory",
-      "type": "optimizes"
+      "type": "optimizes",
+      "description": "By never materializing the full n*n attention matrix in HBM, Flash Attention reduces peak memory from O(n^2) to O(n), enabling longer sequences in the same GPU memory."
     },
     {
       "source": "flash_attention",
       "target": "latency",
-      "type": "optimizes"
+      "type": "optimizes",
+      "description": "The main speedup comes from reducing HBM bandwidth bottleneck: fewer memory round-trips means 2-4x faster wall-clock time for the attention computation."
     },
     {
       "source": "sparse_attention",
       "target": "attention_complexity",
-      "type": "optimizes"
+      "type": "optimizes",
+      "description": "By restricting which token pairs attend to each other (local windows, global tokens, random connections), sparse attention reduces the n^2 factor to n*sqrt(n) or n*log(n)."
     },
     {
       "source": "sparse_attention",
       "target": "context_window",
-      "type": "optimizes"
+      "type": "optimizes",
+      "description": "Reduced memory complexity allows processing much longer sequences — models like BigBird and Longformer handle 4k-16k tokens where standard attention would OOM."
     },
     {
       "source": "sliding_window_attention",
       "target": "sparse_attention",
-      "type": "related_to"
+      "type": "related_to",
+      "description": "Sliding window is the simplest sparse attention pattern: each token only attends to its k nearest neighbors. Used in Mistral and as a building block in more complex sparse schemes."
     },
     {
       "source": "sliding_window_attention",
       "target": "attention_complexity",
-      "type": "optimizes"
+      "type": "optimizes",
+      "description": "Reduces attention from O(n^2) to O(n*w) where w is window size. For w=512 and n=32k, that's a 64x reduction in attention computation."
     },
     {
       "source": "context_window",
       "target": "attention_complexity",
-      "type": "impacts"
+      "type": "impacts",
+      "description": "Doubling the context window quadruples the attention matrix size. This quadratic relationship is the fundamental reason context length is limited."
     },
     {
       "source": "context_window",
       "target": "oom",
-      "type": "impacts"
+      "type": "impacts",
+      "description": "Long contexts cause OOM because both the attention matrix (O(n^2)) and KV cache (O(n*d*layers)) grow with sequence length, easily exceeding GPU memory."
     },
     {
       "source": "batching_strategy",
       "target": "throughput",
-      "type": "optimizes"
+      "type": "optimizes",
+      "description": "Batching amortizes fixed GPU overhead across multiple requests. Dynamic batching and continuous batching (like vLLM's PagedAttention) maximize GPU utilization."
     },
     {
       "source": "batching_strategy",
       "target": "latency",
-      "type": "trades_off"
+      "type": "trades_off",
+      "description": "Larger batches improve throughput but increase per-request latency — each request waits for the slowest in the batch, and GPU memory is shared among all batch members."
     },
     {
       "source": "batching_strategy",
       "target": "weight_memory",
-      "type": "impacts"
+      "type": "impacts",
+      "description": "Each request in a batch needs its own KV cache and activation memory. Larger batches multiply the memory footprint beyond just model weights."
     },
     {
       "source": "attention_complexity",
       "target": "oom",
-      "type": "impacts"
+      "type": "impacts",
+      "description": "The O(n^2) attention matrix is often the first thing to cause OOM when scaling sequence length. For n=8192 in FP16, the attention matrix alone is ~128MB per head per layer."
     },
     {
       "source": "attention_complexity",
       "target": "latency",
-      "type": "impacts"
+      "type": "impacts",
+      "description": "Quadratic attention dominates inference time for long sequences. Even with KV cache, the attention score computation still scales linearly with cached context length."
     },
     {
       "source": "activation_memory",
       "target": "oom",
-      "type": "impacts"
+      "type": "impacts",
+      "description": "During training, all intermediate activations must be stored for backpropagation. This typically requires 10-20x the model size in memory, making it the primary OOM cause in training."
     },
     {
       "source": "weight_memory",
       "target": "oom",
-      "type": "impacts"
+      "type": "impacts",
+      "description": "A 70B parameter model needs 140GB in FP16 just for weights — already exceeding a single A100 (80GB). This is the baseline memory floor before any computation."
     },
     {
       "source": "gradient_memory",
       "target": "oom",
-      "type": "impacts"
+      "type": "impacts",
+      "description": "Training requires storing gradients (same size as weights) plus optimizer states (2x for Adam momentum+variance). A 7B model in FP32 needs ~84GB just for weights+gradients+optimizer."
     },
     {
       "source": "mixed_precision",
       "target": "loss_scaling",
-      "type": "depends_on"
+      "type": "depends_on",
+      "description": "FP16 has limited dynamic range — small gradients underflow to zero. Loss scaling multiplies the loss by a large constant before backprop, keeping gradients representable in FP16."
     },
     {
       "source": "mixed_precision",
       "target": "weight_memory",
-      "type": "optimizes"
+      "type": "optimizes",
+      "description": "Using FP16 for forward/backward passes halves activation and gradient memory. Master weights stay in FP32 for numerical accuracy, but the bulk of computation uses less memory."
     },
     {
       "source": "mixed_precision",
       "target": "numerical_instability",
-      "type": "trades_off"
+      "type": "trades_off",
+      "description": "FP16 has only 5 exponent bits vs FP32's 8, making overflow/underflow much more likely. This is the core trade-off: 2x memory savings vs risk of NaN/divergence."
     },
     {
       "source": "loss_scaling",
       "target": "numerical_instability",
-      "type": "optimizes"
+      "type": "optimizes",
+      "description": "By scaling gradients up before FP16 computation and down after, loss scaling preserves small gradient values that would otherwise underflow to zero and cause training instability."
     },
     {
       "source": "quantization",
       "target": "weight_memory",
-      "type": "optimizes"
+      "type": "optimizes",
+      "description": "INT8 quantization cuts weight memory by 4x vs FP32 (1 byte vs 4 bytes per param). INT4 (GPTQ, AWQ) achieves 8x reduction, making 70B models fit on consumer GPUs."
     },
     {
       "source": "quantization",
       "target": "latency",
-      "type": "optimizes"
+      "type": "optimizes",
+      "description": "Smaller weights mean less memory bandwidth needed to feed the GPU. Since LLM inference is typically memory-bandwidth-bound, quantization directly improves tokens/second."
     },
     {
       "source": "rlhf",
       "target": "post_training",
-      "type": "related_to"
+      "type": "related_to",
+      "description": "RLHF is the final stage of post-training: after supervised fine-tuning (SFT) aligns format, RLHF optimizes for human preferences on subjective qualities like helpfulness and safety."
     },
     {
       "source": "post_training",
       "target": "gradient_memory",
-      "type": "impacts"
+      "type": "impacts",
+      "description": "Fine-tuning still requires gradient computation and optimizer states. Even with LoRA (low-rank adaptation), some gradient memory is needed for the trainable parameters."
     },
     {
       "source": "tensor_parallelism",
       "target": "weight_memory",
-      "type": "optimizes"
+      "type": "optimizes",
+      "description": "TP splits weight matrices across GPUs — each device stores only 1/N of each layer's parameters. Essential when a single layer's weights exceed one GPU's memory."
     },
     {
       "source": "tensor_parallelism",
       "target": "communication_overhead",
-      "type": "impacts"
+      "type": "impacts",
+      "description": "TP requires all-reduce communication after every layer's forward pass to recombine partial results. This makes fast interconnects (NVLink) critical for TP performance."
     },
     {
       "source": "tensor_parallelism",
       "target": "latency",
-      "type": "trades_off"
+      "type": "trades_off",
+      "description": "While TP reduces per-GPU compute, the mandatory all-reduce synchronization after each layer adds latency. With slow interconnects, TP can actually increase total latency."
     },
     {
       "source": "pipeline_parallelism",
       "target": "weight_memory",
-      "type": "optimizes"
+      "type": "optimizes",
+      "description": "PP distributes model layers across GPUs sequentially. Each device only stores a subset of layers, reducing per-GPU weight memory proportionally to the number of pipeline stages."
     },
     {
       "source": "pipeline_parallelism",
       "target": "throughput",
-      "type": "optimizes"
+      "type": "optimizes",
+      "description": "Micro-batching keeps all pipeline stages busy simultaneously, achieving near-linear throughput scaling. Once the pipeline is full, multiple micro-batches are in flight."
     },
     {
       "source": "pipeline_parallelism",
       "target": "latency",
-      "type": "trades_off"
+      "type": "trades_off",
+      "description": "A single request must traverse all pipeline stages sequentially, so latency equals the sum of all stage times. Pipeline bubbles at start/end also waste compute."
     },
     {
       "source": "data_parallelism",
       "target": "throughput",
-      "type": "optimizes"
+      "type": "optimizes",
+      "description": "DP replicates the model on N GPUs, each processing different data. Throughput scales linearly with GPU count, limited only by gradient synchronization overhead."
     },
     {
       "source": "data_parallelism",
       "target": "communication_overhead",
-      "type": "impacts"
+      "type": "impacts",
+      "description": "DP requires all-reduce of gradients across all replicas after each backward pass. For large models, this gradient communication can take 30-50% of total training time."
     },
     {
       "source": "data_parallelism",
       "target": "gradient_memory",
-      "type": "impacts"
+      "type": "impacts",
+      "description": "Standard DP stores full gradients and optimizer states on each GPU. ZeRO (DeepSpeed) shards these across devices, reducing per-GPU gradient memory by the parallelism degree."
     },
     {
       "source": "communication_overhead",
       "target": "flops",
-      "type": "trades_off"
+      "type": "trades_off",
+      "description": "Time spent transferring data between GPUs is time not spent computing. High communication overhead reduces effective FLOP utilization (MFU), wasting expensive GPU cycles."
     },
     {
       "source": "communication_overhead",
       "target": "throughput",
-      "type": "impacts"
+      "type": "impacts",
+      "description": "Network bandwidth and latency between devices caps maximum throughput in distributed training. Faster interconnects (NVLink: 900 GB/s vs PCIe: 64 GB/s) directly increase throughput."
     },
     {
       "source": "latency",
       "target": "throughput",
-      "type": "trades_off"
+      "type": "trades_off",
+      "description": "The fundamental serving trade-off: batching more requests improves GPU utilization (throughput) but each request waits longer (latency). Continuous batching helps but doesn't eliminate this."
     },
     {
       "source": "memorization",
       "target": "perplexity",
-      "type": "related_to"
+      "type": "related_to",
+      "description": "Models with low perplexity on training data may have memorized it rather than learned generalizable patterns. Perplexity on held-out data helps distinguish genuine understanding from memorization."
     },
     {
       "source": "hallucination_detection",
       "target": "bleu_rouge",
-      "type": "related_to"
+      "type": "related_to",
+      "description": "BLEU/ROUGE measure n-gram overlap with reference text — low scores can indicate hallucinated content that diverges from factual references, though these metrics miss semantic hallucinations."
     },
     {
       "source": "toxicity_detection",
       "target": "hallucination_detection",
-      "type": "related_to"
+      "type": "related_to",
+      "description": "Both are output quality monitoring tasks. Toxic outputs and hallucinations are different failure modes but share similar detection infrastructure (classifiers, human review pipelines)."
     },
     {
       "source": "bm25",
       "target": "tf_idf",
-      "type": "depends_on"
+      "type": "depends_on",
+      "description": "BM25 is an evolution of TF-IDF that adds document length normalization and term frequency saturation. It builds on the same sparse term-matching paradigm."
     },
     {
       "source": "sparse_retrieval",
       "target": "tf_idf",
-      "type": "depends_on"
+      "type": "depends_on",
+      "description": "TF-IDF is the foundational sparse retrieval method — documents become high-dimensional sparse vectors where each non-zero entry represents a term's importance."
     },
     {
       "source": "sparse_retrieval",
       "target": "bm25",
-      "type": "depends_on"
+      "type": "depends_on",
+      "description": "BM25 is the standard production sparse retrieval algorithm. It's what Elasticsearch, Lucene, and Solr use under the hood for keyword-based document ranking."
     },
     {
       "source": "hybrid_retrieval",
       "target": "dense_retrieval",
-      "type": "depends_on"
+      "type": "depends_on",
+      "description": "Hybrid retrieval runs dense (semantic) search as one of its two retrieval paths, capturing meaning-based matches that keyword search would miss."
     },
     {
       "source": "hybrid_retrieval",
       "target": "sparse_retrieval",
-      "type": "depends_on"
+      "type": "depends_on",
+      "description": "Hybrid retrieval runs sparse (keyword) search as its second path, catching exact term matches and rare entity names that dense models might not encode well."
     },
     {
       "source": "dense_retrieval",
       "target": "ann_search",
-      "type": "depends_on"
+      "type": "depends_on",
+      "description": "Dense retrieval produces embedding vectors that must be searched efficiently. ANN algorithms (HNSW, IVF) make this feasible at billion-document scale without brute-force comparison."
     },
     {
       "source": "dense_retrieval",
       "target": "multi_head_attention",
-      "type": "related_to"
+      "type": "related_to",
+      "description": "Dense retrieval encoders (BERT, sentence transformers) use multi-head attention to produce embeddings. The quality of retrieval depends directly on the attention mechanism's ability to capture semantics."
     },
     {
       "source": "faiss",
       "target": "ann_search",
-      "type": "depends_on"
+      "type": "depends_on",
+      "description": "FAISS implements multiple ANN algorithms (flat, IVF, HNSW, PQ) and provides GPU-accelerated search. It's the most widely used library for production-scale vector similarity search."
     },
     {
       "source": "faiss",
       "target": "weight_memory",
-      "type": "impacts"
+      "type": "impacts",
+      "description": "FAISS indices storing billions of vectors consume significant memory. Product quantization can compress vectors but the index itself can require tens of GB of RAM or GPU memory."
     },
     {
       "source": "ann_search",
       "target": "latency",
-      "type": "optimizes"
+      "type": "optimizes",
+      "description": "ANN trades a small accuracy loss for 100-1000x speed improvement over brute-force search. HNSW can search millions of vectors in under 1ms, making real-time retrieval feasible."
     },
     {
       "source": "hyde",
       "target": "dense_retrieval",
-      "type": "depends_on"
+      "type": "depends_on",
+      "description": "HyDE generates a hypothetical answer, then uses dense retrieval to find real documents similar to that answer. The key insight: answer-to-document similarity is often better than query-to-document."
     },
     {
       "source": "metadata_filtering",
       "target": "hybrid_retrieval",
-      "type": "related_to"
+      "type": "related_to",
+      "description": "Metadata filters (date, source, category) are commonly applied before or alongside hybrid search to narrow the search space and improve result relevance."
     },
     {
       "source": "chunking_strategy",
       "target": "context_window",
-      "type": "impacts"
+      "type": "impacts",
+      "description": "Chunk sizes must be calibrated to the LLM's context window. Too-large chunks waste context tokens; too-small chunks lose surrounding context needed for comprehension."
     },
     {
       "source": "chunking_strategy",
       "target": "dense_retrieval",
-      "type": "impacts"
+      "type": "impacts",
+      "description": "Chunk size directly affects embedding quality. Smaller chunks produce more focused embeddings (better precision) while larger chunks capture more context (better recall)."
     },
     {
       "source": "chunking_strategy",
       "target": "sparse_retrieval",
-      "type": "impacts"
+      "type": "impacts",
+      "description": "Chunk size affects term frequency statistics. Very small chunks may not have enough terms for meaningful BM25 scores; very large chunks dilute important terms."
     },
     {
       "source": "time_weighted_retrieval",
       "target": "dense_retrieval",
-      "type": "related_to"
+      "type": "related_to",
+      "description": "Time weighting modifies dense retrieval scores with a recency decay function, boosting recent documents. Useful when information freshness matters (news, docs, changelogs)."
     },
     {
       "source": "time_weighted_retrieval",
       "target": "sparse_retrieval",
-      "type": "related_to"
+      "type": "related_to",
+      "description": "Time decay can also be applied to sparse retrieval scores. Common pattern: multiply BM25 score by exp(-lambda * document_age) to prioritize recent content."
     },
     {
       "source": "knowledge_graph_rag",
       "target": "kg_agent",
-      "type": "depends_on"
+      "type": "depends_on",
+      "description": "Knowledge Graph RAG requires an agent to extract entities and relations from documents into a structured graph. Without the extraction agent, there's no graph to query."
     },
     {
       "source": "knowledge_graph_rag",
       "target": "hybrid_retrieval",
-      "type": "related_to"
+      "type": "related_to",
+      "description": "KG RAG can complement hybrid retrieval: use vector/keyword search for passage retrieval, then traverse the knowledge graph for structured facts and multi-hop reasoning."
     },
     {
       "source": "knowledge_graph_rag",
       "target": "hallucination_detection",
-      "type": "optimizes"
+      "type": "optimizes",
+      "description": "Knowledge graphs provide verifiable facts (entity-relation-entity triples) that can be cross-checked against LLM outputs, making hallucination detection more reliable."
     },
     {
       "source": "adaptive_rag",
       "target": "dense_retrieval",
-      "type": "depends_on"
+      "type": "depends_on",
+      "description": "Adaptive RAG uses dense retrieval as one of its routing targets — selected when the query requires semantic understanding of internal knowledge base content."
     },
     {
       "source": "adaptive_rag",
       "target": "sparse_retrieval",
-      "type": "depends_on"
+      "type": "depends_on",
+      "description": "Sparse retrieval is another routing target in adaptive RAG, chosen for queries with specific keywords, entity names, or technical terms that need exact matching."
     },
     {
       "source": "adaptive_rag",
       "target": "hybrid_retrieval",
-      "type": "depends_on"
+      "type": "depends_on",
+      "description": "Adaptive RAG can route to hybrid retrieval for complex queries that benefit from both semantic and keyword matching, getting the best coverage."
     },
     {
       "source": "adaptive_rag",
       "target": "latency",
-      "type": "optimizes"
+      "type": "optimizes",
+      "description": "By skipping retrieval entirely for queries the LLM can answer directly (reasoning, math), adaptive RAG avoids unnecessary search latency and reduces average response time."
     },
     {
       "source": "acl",
       "target": "dense_retrieval",
-      "type": "impacts"
+      "type": "impacts",
+      "description": "ACLs add a permission-checking step to dense retrieval: after finding nearest vectors, results must be filtered by user permissions, potentially reducing the effective result set."
     },
     {
       "source": "acl",
       "target": "sparse_retrieval",
-      "type": "impacts"
+      "type": "impacts",
+      "description": "ACLs must be enforced on sparse retrieval results too. In enterprise settings, a user should never see documents they don't have access to, even if they're highly relevant."
     },
     {
       "source": "hybrid_retrieval",
       "target": "hallucination_detection",
-      "type": "optimizes"
+      "type": "optimizes",
+      "description": "Hybrid retrieval provides more complete source material to the LLM by catching both semantic and keyword matches, giving hallucination detectors better reference material to verify against."
     },
     {
       "source": "dense_retrieval",
       "target": "latency",
-      "type": "impacts"
+      "type": "impacts",
+      "description": "Dense retrieval adds encoding latency (embedding the query) plus search latency (ANN lookup). For real-time applications, this 10-50ms overhead can be significant."
     },
     {
       "source": "hybrid_retrieval",
       "target": "latency",
-      "type": "impacts"
+      "type": "impacts",
+      "description": "Hybrid retrieval roughly doubles search latency vs single-method retrieval since it runs both dense and sparse searches, plus fusion scoring. Parallel execution helps but doesn't eliminate the cost."
     }
   ]
 }

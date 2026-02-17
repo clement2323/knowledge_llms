@@ -18,7 +18,7 @@
   position: fixed;
   top: 20px;
   right: 20px;
-  z-index: 900;
+  z-index: 910;
   width: 380px;
 }
 
@@ -780,4 +780,74 @@
     min-height: 48px;
     min-width: 48px;
   }
+}
+
+/* Edge Panel */
+.edge-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0;
+  line-height: 1.3;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+@media (min-width: 768px) {
+  .edge-title {
+    font-size: 26px;
+  }
+}
+
+.edge-arrow {
+  color: #94a3b8;
+  font-size: 20px;
+  font-weight: 400;
+}
+
+.edge-nav-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.edge-nav-btn {
+  padding: 14px 18px;
+  border: 2px solid #e2e8f0;
+  background: white;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #334155;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.edge-nav-btn:hover {
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border-color: #6366f1;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.15);
+}
+
+.edge-nav-btn:active {
+  transform: translateY(0);
+}
+
+.link-type-badge {
+  display: inline-block;
+  padding: 6px 16px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: white;
+  margin-bottom: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }

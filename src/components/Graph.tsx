@@ -1,14 +1,16 @@
 import { useGraph } from '../hooks/useGraph';
-import type { GraphData, GraphNode } from '../types/graph';
+import type { GraphData, GraphNode, SimulationLink } from '../types/graph';
 
 interface Props {
   data: GraphData;
   onNodeClick: (node: GraphNode) => void;
   selectedNodeId?: string | null;
+  onEdgeClick?: (link: SimulationLink) => void;
+  selectedEdge?: { sourceId: string; targetId: string } | null;
 }
 
-export const Graph = ({ data, onNodeClick, selectedNodeId }: Props) => {
-  const svgRef = useGraph(data, onNodeClick, selectedNodeId);
+export const Graph = ({ data, onNodeClick, selectedNodeId, onEdgeClick, selectedEdge }: Props) => {
+  const svgRef = useGraph(data, onNodeClick, selectedNodeId, onEdgeClick, selectedEdge);
 
   return (
     <div className="graph-container">

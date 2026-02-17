@@ -14,6 +14,14 @@ export interface GraphLink {
   source: string;
   target: string;
   type: 'depends_on' | 'optimizes' | 'trades_off' | 'impacts' | 'related_to';
+  description?: string;
+}
+
+export interface ResolvedEdge {
+  sourceNode: GraphNode;
+  targetNode: GraphNode;
+  type: GraphLink['type'];
+  description?: string;
 }
 
 export interface Category {
@@ -51,4 +59,5 @@ export interface SimulationLink {
   source: string | SimulationNode;
   target: string | SimulationNode;
   type: GraphLink['type'];
+  description?: string;
 }
